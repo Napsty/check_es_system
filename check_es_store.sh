@@ -45,16 +45,18 @@ Usage: ./check_es_store.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -d disks
 
 Options: 
 
-     -H Hostname or ip address of ElasticSearch Node
+   * -H Hostname or ip address of ElasticSearch Node
      -P Port (defaults to 9200)
      -S Use https
      -u Username if authentication is required
      -p Password if authentication is required
-     -d Available diskspace (ex. 20)
+   * -d Available diskspace (ex. 20)
      -o Disk space unit (K|M|G) (defaults to G)
      -w Warning threshold in percent (default: 80)
      -c Critical threshold in percent (default: 95)
      -h Help!
+
+*mandatory options
 
 Requirements: curl, jshon, expr" 
 exit $STATE_UNKNOWN;
@@ -82,7 +84,7 @@ if [[ -n $unit ]]; then
     criticalsize=$(expr $critical \* ${availsize} / 100) 
   fi
   usedpercent=$(expr $size \* 100 / $availsize)
-else echo "UNKNOWN - Shouldnt exit here. No units given"; exit 3
+else echo "UNKNOWN - Shouldnt exit here. No units given"; exit $STATE_UNKNOWN
 fi
 }
 ################################################################################
@@ -113,6 +115,9 @@ do
   *)      help;;
   esac
 done
+
+# Check for mandatory opts
+if [-z ${host} ] || [-z ${disksize}]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Do the check
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
