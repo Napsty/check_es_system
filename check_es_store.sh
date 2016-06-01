@@ -117,7 +117,7 @@ do
 done
 
 # Check for mandatory opts
-if [[-z ${host} ]] || [[-z ${disksize}]]; then help; exit $STATE_UNKNOWN; fi
+if [ -z ${host} ] || [ -z ${disksize} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Do the check
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
