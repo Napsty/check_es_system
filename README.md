@@ -15,3 +15,4 @@ Example
 -------
 
     ./check_es_store.sh -H MyESCluster.found.no -u search -p find -d 50 
+    ES STORE OK - Disk usage is at 25% (12 G)|es_store=13461027761B;42949672960;51002736640;;
