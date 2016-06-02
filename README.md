@@ -1,5 +1,6 @@
 # check_es_store
 Monitoring plugin to check disk (store) usage of an ElasticSearch node. 
+
 Please refer to http://www.claudiokuenzler.com/nagios-plugins/check_es_store.php for full documentation.
 
 Requirements
