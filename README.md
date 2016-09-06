@@ -2,6 +2,7 @@
 Monitoring plugin to check disk or memory usage on an ElasticSearch node. 
 
 Please refer to http://www.claudiokuenzler.com/nagios-plugins/check_es_system.php for full documentation.
+(old URL: http://www.claudiokuenzler.com/nagios-plugins/check_es_store.php)
 
 Requirements
 ------
