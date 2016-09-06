@@ -1,6 +1,6 @@
 #!/bin/bash 
 ################################################################################
-# Script:       check_es_store.sh                                              #
+# Script:       check_es_system.sh                                              #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
 # Purpose:      Monitor ElasticSearch Store (Disk) Usage                       #
 # Licence:      GPLv2                                                          #
@@ -24,6 +24,8 @@
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
 # 20160601: Continued programming. Working now as it should =)                 #
+# 20160906: Added memory usage check, check types option (-t)                  #
+# 20160906: Renamed plugin from check_es_store to check_es_system              #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -41,7 +43,7 @@ critical=95
 help () {
 echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler (published under GPL licence)
 
-Usage: ./check_es_store.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -d diskspace [-o unit] [-w warn] [-c crit]
+Usage: ./check_es_system.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -d available [-o unit] [-w warn] [-c crit]
 
 Options: 
 
@@ -50,7 +52,8 @@ Options:
      -S Use https
      -u Username if authentication is required
      -p Password if authentication is required
-   * -d Available diskspace (ex. 20)
+   * -d Available size of disk or memory (ex. 20)
+   * -t Type of check (disk|mem)
      -o Disk space unit (K|M|G) (defaults to G)
      -w Warning threshold in percent (default: 80)
      -c Critical threshold in percent (default: 95)
@@ -63,9 +66,9 @@ exit $STATE_UNKNOWN;
 }
 
 authlogic () {
-if [[ -z $user ]] && [[ -z $pass ]]; then echo "ES STORE UNKNOWN - Authentication required but missing username and password"; exit $STATE_UNKNOWN
-elif [[ -n $user ]] && [[ -z $pass ]]; then echo "ES STORE UNKNOWN - Authentication required but missing password"; exit $STATE_UNKNOWN
-elif [[ -n $pass ]] && [[ -z $user ]]; then echo "ES STORE UNKNOWN - Missing username"; exit $STATE_UNKNOWN
+if [[ -z $user ]] && [[ -z $pass ]]; then echo "ES SYSTEM UNKNOWN - Authentication required but missing username and password"; exit $STATE_UNKNOWN
+elif [[ -n $user ]] && [[ -z $pass ]]; then echo "ES SYSTEM UNKNOWN - Authentication required but missing password"; exit $STATE_UNKNOWN
+elif [[ -n $pass ]] && [[ -z $user ]]; then echo "ES SYSTEM UNKNOWN - Missing username"; exit $STATE_UNKNOWN
 fi
 }
 
@@ -100,7 +103,7 @@ done
 if [ "${1}" = "--help" -o "${#}" = "0" ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Get user-given variables
-while getopts "H:P:Su:p:d:o:w:c:" Input;
+while getopts "H:P:Su:p:d:o:w:c:t:" Input;
 do
   case ${Input} in
   H)      host=${OPTARG};;
@@ -112,6 +115,7 @@ do
   o)      unit=${OPTARG};;
   w)      warning=${OPTARG};;
   c)      critical=${OPTARG};;
+  t)      checktype=${OPTARG};;
   *)      help;;
   esac
 done
@@ -128,29 +132,57 @@ if [[ -n $(echo $esstatus | grep -i authentication) ]]; then
   authlogic
   esstatus=$(curl -s --basic -u ${user}:${pass} $esurl)
   if [[ -n $(echo $esstatus | grep -i authentication) ]]; then
-    echo "ES STORE CRITICAL - Unable to authenticate user $user for REST request"
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
   fi
+
+case $checktype in
+disk) # Check disk usage
   size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
   unitcalc
-
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then 
     # Handle tresholds
     if [ $size -ge $criticalsize ]; then 
-      echo "ES STORE CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_store=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then 
-      echo "ES STORE WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_store=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     else
-      echo "ES STORE OK - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_store=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_OK
     fi
   else 
     # No thresholds
-    echo "ES STORE OK - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_store=${size}B;;;;"
+    echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;;;;"
     exit $STATE_OK
   fi
+  ;;
+
+mem) # Check memory usage
+  size=$(echo $esstatus | jshon -e nodes -e jvm -e mem -e "heap_used_in_bytes")
+  unitcalc
+  if [ -n "${warning}" ] || [ -n "${critical}" ]; then 
+    # Handle tresholds
+    if [ $size -ge $criticalsize ]; then 
+      echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      exit $STATE_CRITICAL
+    elif [ $size -ge $warningsize ]; then 
+      echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      exit $STATE_CRITICAL
+    else
+      echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      exit $STATE_OK
+    fi
+  else 
+    # No thresholds
+    echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;;;;"
+    exit $STATE_OK
+  fi
+  ;;
+
+*) help
+esac
        
 
 fi
