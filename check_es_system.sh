@@ -26,6 +26,8 @@
 # 20160601: Continued programming. Working now as it should =)                 #
 # 20160906: Added memory usage check, check types option (-t)                  #
 # 20160906: Renamed plugin from check_es_store to check_es_system              #
+# 20160907: Change internal referenced variable name for available size        #
+# 20160907: Output now contains both used and available sizes                  #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -76,9 +78,9 @@ unitcalc() {
 # ES presents the currently used disk space in Bytes
 if [[ -n $unit ]]; then 
   case $unit in 
-    K) availsize=$(expr $disksize \* 1024); outputsize=$(expr ${size} / 1024);;
-    M) availsize=$(expr $disksize \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024);;
-    G) availsize=$(expr $disksize \* 1024 \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024 / 1024);;
+    K) availsize=$(expr $available \* 1024); outputsize=$(expr ${size} / 1024);;
+    M) availsize=$(expr $available \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024);;
+    G) availsize=$(expr $available \* 1024 \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024 / 1024);;
   esac
   if [[ -n $warning ]] ; then
     warningsize=$(expr $warning \* ${availsize} / 100) 
@@ -111,7 +113,7 @@ do
   S)      httpscheme=https;;
   u)      user=${OPTARG};;
   p)      pass=${OPTARG};;
-  d)      disksize=${OPTARG};;
+  d)      available=${OPTARG};;
   o)      unit=${OPTARG};;
   w)      warning=${OPTARG};;
   c)      critical=${OPTARG};;
@@ -121,7 +123,7 @@ do
 done
 
 # Check for mandatory opts
-if [ -z ${host} ] || [ -z ${disksize} ]; then help; exit $STATE_UNKNOWN; fi
+if [ -z ${host} ] || [ -z ${available} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Do the check
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
@@ -143,18 +145,18 @@ disk) # Check disk usage
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then 
     # Handle tresholds
     if [ $size -ge $criticalsize ]; then 
-      echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then 
-      echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     else
-      echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_OK
     fi
   else 
     # No thresholds
-    echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit)|es_disk=${size}B;;;;"
+    echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;;;;"
     exit $STATE_OK
   fi
   ;;
@@ -165,18 +167,18 @@ mem) # Check memory usage
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then 
     # Handle tresholds
     if [ $size -ge $criticalsize ]; then 
-      echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit) from $available $unit|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then 
-      echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     else
-      echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_OK
     fi
   else 
     # No thresholds
-    echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit)|es_memory=${size}B;;;;"
+    echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;;;;"
     exit $STATE_OK
   fi
   ;;
