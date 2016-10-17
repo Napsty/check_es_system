@@ -28,6 +28,7 @@
 # 20160906: Renamed plugin from check_es_store to check_es_system              #
 # 20160907: Change internal referenced variable name for available size        #
 # 20160907: Output now contains both used and available sizes                  #
+# 20161017: Add missing -t in usage output                                     #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -45,7 +46,7 @@ critical=95
 help () {
 echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler (published under GPL licence)
 
-Usage: ./check_es_system.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -d available [-o unit] [-w warn] [-c crit]
+Usage: ./check_es_system.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit]
 
 Options: 
 
