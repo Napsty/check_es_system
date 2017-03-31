@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 ################################################################################
 # Script:       check_es_system.sh                                              #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
@@ -42,13 +42,13 @@ unit=G
 warning=80
 critical=95
 ################################################################################
-#Functions 
+#Functions
 help () {
 echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler (published under GPL licence)
 
 Usage: ./check_es_system.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit]
 
-Options: 
+Options:
 
    * -H Hostname or ip address of ElasticSearch Node
      -P Port (defaults to 9200)
@@ -64,7 +64,7 @@ Options:
 
 *mandatory options
 
-Requirements: curl, jshon, expr" 
+Requirements: curl, jshon, expr"
 exit $STATE_UNKNOWN;
 }
 
@@ -77,17 +77,17 @@ fi
 
 unitcalc() {
 # ES presents the currently used disk space in Bytes
-if [[ -n $unit ]]; then 
-  case $unit in 
+if [[ -n $unit ]]; then
+  case $unit in
     K) availsize=$(expr $available \* 1024); outputsize=$(expr ${size} / 1024);;
     M) availsize=$(expr $available \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024);;
     G) availsize=$(expr $available \* 1024 \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024 / 1024);;
   esac
   if [[ -n $warning ]] ; then
-    warningsize=$(expr $warning \* ${availsize} / 100) 
+    warningsize=$(expr $warning \* ${availsize} / 100)
   fi
   if [[ -n $critical ]] ; then
-    criticalsize=$(expr $critical \* ${availsize} / 100) 
+    criticalsize=$(expr $critical \* ${availsize} / 100)
   fi
   usedpercent=$(expr $size \* 100 / $availsize)
 else echo "UNKNOWN - Shouldnt exit here. No units given"; exit $STATE_UNKNOWN
@@ -95,7 +95,7 @@ fi
 }
 ################################################################################
 # Check requirements
-for cmd in curl jshon expr; do 
+for cmd in curl jshon expr; do
  if ! `which ${cmd} 1>/dev/null`; then
    echo "UNKNOWN: ${cmd} does not exist, please check if command exists and PATH is correct"
    exit ${STATE_UNKNOWN}
@@ -143,19 +143,19 @@ case $checktype in
 disk) # Check disk usage
   size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
   unitcalc
-  if [ -n "${warning}" ] || [ -n "${critical}" ]; then 
+  if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
-    if [ $size -ge $criticalsize ]; then 
+    if [ $size -ge $criticalsize ]; then
       echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
-    elif [ $size -ge $warningsize ]; then 
+    elif [ $size -ge $warningsize ]; then
       echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     else
       echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_OK
     fi
-  else 
+  else
     # No thresholds
     echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;;;;"
     exit $STATE_OK
@@ -165,19 +165,19 @@ disk) # Check disk usage
 mem) # Check memory usage
   size=$(echo $esstatus | jshon -e nodes -e jvm -e mem -e "heap_used_in_bytes")
   unitcalc
-  if [ -n "${warning}" ] || [ -n "${critical}" ]; then 
+  if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
-    if [ $size -ge $criticalsize ]; then 
+    if [ $size -ge $criticalsize ]; then
       echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit) from $available $unit|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
-    elif [ $size -ge $warningsize ]; then 
+    elif [ $size -ge $warningsize ]; then
       echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
     else
       echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_OK
     fi
-  else 
+  else
     # No thresholds
     echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;;;;"
     exit $STATE_OK
@@ -186,7 +186,7 @@ mem) # Check memory usage
 
 *) help
 esac
-       
+
 
 fi
 
