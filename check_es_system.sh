@@ -138,7 +138,7 @@ if [[ -n $(echo $esstatus | grep -i authentication) ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
   fi
-
+fi
 case $checktype in
 disk) # Check disk usage
   size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
@@ -186,7 +186,3 @@ mem) # Check memory usage
 
 *) help
 esac
-
-
-fi
-
