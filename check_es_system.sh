@@ -1,6 +1,6 @@
 #!/bin/bash
 ################################################################################
-# Script:       check_es_system.sh                                              #
+# Script:       check_es_system.sh                                             #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
 # Purpose:      Monitor ElasticSearch Store (Disk) Usage                       #
 # Licence:      GPLv2                                                          #
@@ -30,6 +30,7 @@
 # 20160907: Output now contains both used and available sizes                  #
 # 20161017: Add missing -t in usage output                                     #
 # 20180105: Fix if statement for authentication (@deric)                       #
+# 20180105: Fix authentication when wrong credentials were used                #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -135,7 +136,7 @@ if [[ -n $(echo $esstatus | grep -i authentication) ]]; then
   # Authentication required
   authlogic
   esstatus=$(curl -s --basic -u ${user}:${pass} $esurl)
-  if [[ -n $(echo $esstatus | grep -i authentication) ]]; then
+  if [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
   fi
