@@ -29,6 +29,7 @@
 # 20160907: Change internal referenced variable name for available size        #
 # 20160907: Output now contains both used and available sizes                  #
 # 20161017: Add missing -t in usage output                                     #
+# 20180105: Fix if statement for authentication (@deric)                       #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
