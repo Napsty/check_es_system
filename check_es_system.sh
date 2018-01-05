@@ -48,7 +48,7 @@ critical=95
 help () {
 echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler (published under GPL licence)
 
-Usage: ./check_es_system.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit]
+Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit]
 
 Options:
 
