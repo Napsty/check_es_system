@@ -5,12 +5,12 @@ Please refer to http://www.claudiokuenzler.com/nagios-plugins/check_es_system.ph
 
 Requirements
 ------
-The following commands must be available: curl, jshon, expr
+The following commands must be available: `curl`, `jshon`, `expr`
 
 Usage
 ------
 
-    ./check_es_system.sh -H ESNode [-p port] [-S] [-u user] [-p pass] -d diskspace -t check [-o unit] [-w warn] [-c crit]
+    ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -d diskspace -t check [-o unit] [-w warn] [-c crit] [-m max_time]
     
     
 Example
