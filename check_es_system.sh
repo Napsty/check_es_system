@@ -17,9 +17,10 @@
 # GNU General Public License for more details.                                 #
 #                                                                              #
 # You should have received a copy of the GNU General Public License            #
-# along with this program; if not, write to the Free Software                  #
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA                #
-# 02110-1301, USA.                                                             #
+# along with this program; if not, see <https://www.gnu.org/licenses/>.        #
+#                                                                              #
+# Copyright 2016,2018 Claudio Kuenzler                                         #
+# Copyright 2018 Tomas Barton                                                  #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -48,7 +49,7 @@ max_time=30
 ################################################################################
 #Functions
 help () {
-echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler (published under GPL licence)
+echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler and contributers (published under GPL licence)
 
 Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit] [-m max_time]
 
