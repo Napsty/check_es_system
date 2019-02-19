@@ -1,5 +1,5 @@
 # check_es_system
-Monitoring plugin to check disk or memory usage on an ElasticSearch node. 
+Monitoring plugin to check disk or memory usage on an ElasticSearch node, whether on-prem or running in the Cloud.
 
 Please refer to http://www.claudiokuenzler.com/nagios-plugins/check_es_system.php for full documentation.
 
