@@ -31,6 +31,7 @@
 # 20161017: Add missing -t in usage output                                     #
 # 20180105: Fix if statement for authentication (@deric)                       #
 # 20180105: Fix authentication when wrong credentials were used                #
+# 20180313: Configure max_time for Elastic to respond (@deric)                 #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -43,12 +44,13 @@ httpscheme=http
 unit=G
 warning=80
 critical=95
+max_time=30
 ################################################################################
 #Functions
 help () {
 echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler (published under GPL licence)
 
-Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit]
+Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit] [-m max_time]
 
 Options:
 
@@ -62,6 +64,7 @@ Options:
      -o Disk space unit (K|M|G) (defaults to G)
      -w Warning threshold in percent (default: 80)
      -c Critical threshold in percent (default: 95)
+     -m Maximum time in seconds to wait for response (default: 30s)
      -h Help!
 
 *mandatory options
@@ -108,7 +111,7 @@ done
 if [ "${1}" = "--help" -o "${#}" = "0" ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Get user-given variables
-while getopts "H:P:Su:p:d:o:w:c:t:" Input;
+while getopts "H:P:Su:p:d:o:w:c:t:m:" Input;
 do
   case ${Input} in
   H)      host=${OPTARG};;
@@ -121,6 +124,7 @@ do
   w)      warning=${OPTARG};;
   c)      critical=${OPTARG};;
   t)      checktype=${OPTARG};;
+  m)      max_time=${OPTARG};;
   *)      help;;
   esac
 done
@@ -130,7 +134,11 @@ if [ -z ${host} ] || [ -z ${available} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Do the check
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
-esstatus=$(curl -k -s $esurl)
+esstatus=$(curl -k -s --max-time ${max_time} $esurl)
+if [[ $? -eq 28 ]]; then
+  echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+  exit $STATE_CRITICAL
+fi
 
 if [[ -n $(echo $esstatus | grep -i authentication) ]]; then
   # Authentication required
