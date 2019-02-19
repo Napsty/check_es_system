@@ -172,6 +172,13 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   fi
 fi
 
+# Catch empty reply from server (typically happens when ssl port used with http connection)
+if [[ -z $esstatus ]] || [[ $esstatus = '' ]]; then
+  echo "ES SYSTEM UNKNOWN - Empty reply from server (verify ssl settings)"
+  exit $STATE_UNKNOWN
+fi
+
+
 # Do the checks
 case $checktype in
 disk) # Check disk usage
