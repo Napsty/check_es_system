@@ -152,6 +152,9 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   if [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
+  elif [[ $? -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
   fi
 fi
 
