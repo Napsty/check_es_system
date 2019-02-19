@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License            #
 # along with this program; if not, see <https://www.gnu.org/licenses/>.        #
 #                                                                              #
-# Copyright 2016,2018 Claudio Kuenzler                                         #
+# Copyright 2016,2018,2019 Claudio Kuenzler                                    #
 # Copyright 2018 Tomas Barton                                                  #
 #                                                                              #
 # History:                                                                     #
@@ -33,6 +33,7 @@
 # 20180105: Fix if statement for authentication (@deric)                       #
 # 20180105: Fix authentication when wrong credentials were used                #
 # 20180313: Configure max_time for Elastic to respond (@deric)                 #
+# 20190219: Fix alternative subject name in ssl (issue 4), direct to auth      #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -135,21 +136,25 @@ if [ -z ${host} ] || [ -z ${available} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Do the check
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
-esstatus=$(curl -k -s --max-time ${max_time} $esurl)
-if [[ $? -eq 28 ]]; then
-  echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-  exit $STATE_CRITICAL
+if [[ -z $user ]]; then 
+  # Without authentication
+  esstatus=$(curl -k -s --max-time ${max_time} $esurl)
+  if [[ $? -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  fi
 fi
 
-if [[ -n $(echo $esstatus | grep -i authentication) ]]; then
+if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   # Authentication required
   authlogic
-  esstatus=$(curl -s --basic -u ${user}:${pass} $esurl)
+  esstatus=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $esurl)
   if [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
   fi
 fi
+
 case $checktype in
 disk) # Check disk usage
   size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
