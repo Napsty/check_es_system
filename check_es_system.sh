@@ -167,7 +167,7 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
-  if [ $checktype = status ]; then
+  if [[ $checktype = status ]]; then
     eshealth=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $eshealthurl)
   fi
 fi
