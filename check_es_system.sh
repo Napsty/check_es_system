@@ -34,6 +34,7 @@
 # 20180105: Fix authentication when wrong credentials were used                #
 # 20180313: Configure max_time for Elastic to respond (@deric)                 #
 # 20190219: Fix alternative subject name in ssl (issue 4), direct to auth      #
+# 20190220: Added status check type                                            #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -41,6 +42,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
+version=1.1
 port=9200
 httpscheme=http
 unit=G
@@ -50,7 +52,7 @@ max_time=30
 ################################################################################
 #Functions
 help () {
-echo -e "$0  (c) 2016-$(date +%Y) Claudio Kuenzler and contributers (published under GPL licence)
+echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributers (published below GPL licence)
 
 Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit] [-m max_time]
 
