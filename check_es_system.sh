@@ -61,8 +61,8 @@ Options:
      -S Use https
      -u Username if authentication is required
      -p Password if authentication is required
-   * -d Available size of disk or memory (ex. 20)
-   * -t Type of check (disk|mem)
+   * -t Type of check (disk|mem|status)
+   + -d Available size of disk or memory (ex. 20)
      -o Disk space unit (K|M|G) (defaults to G)
      -w Warning threshold in percent (default: 80)
      -c Critical threshold in percent (default: 95)
@@ -70,6 +70,7 @@ Options:
      -h Help!
 
 *mandatory options
++mandatory options for types disk,mem
 
 Requirements: curl, jshon, expr"
 exit $STATE_UNKNOWN;
@@ -99,6 +100,10 @@ if [[ -n $unit ]]; then
   usedpercent=$(expr $size \* 100 / $availsize)
 else echo "UNKNOWN - Shouldnt exit here. No units given"; exit $STATE_UNKNOWN
 fi
+}
+
+availrequired() {
+if [ -z ${available} ]; then echo "UNKNOWN - Missing parameter '-d'"; exit $STATE_UNKNOWN; fi
 }
 ################################################################################
 # Check requirements
@@ -132,16 +137,21 @@ do
 done
 
 # Check for mandatory opts
-if [ -z ${host} ] || [ -z ${available} ]; then help; exit $STATE_UNKNOWN; fi
+if [ -z ${host} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
-# Do the check
+# Retrieve information from Elasticsearch
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
+eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
 if [[ -z $user ]]; then 
   # Without authentication
   esstatus=$(curl -k -s --max-time ${max_time} $esurl)
   if [[ $? -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
+  fi
+  # Additionally get cluster health infos
+  if [ $checktype = status ]; then
+    eshealth=$(curl -k -s --max-time ${max_time} $eshealthurl)
   fi
 fi
 
@@ -156,10 +166,23 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
   fi
+  # Additionally get cluster health infos
+  if [[ $checktype = status ]]; then
+    eshealth=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $eshealthurl)
+  fi
 fi
 
+# Catch empty reply from server (typically happens when ssl port used with http connection)
+if [[ -z $esstatus ]] || [[ $esstatus = '' ]]; then
+  echo "ES SYSTEM UNKNOWN - Empty reply from server (verify ssl settings)"
+  exit $STATE_UNKNOWN
+fi
+
+
+# Do the checks
 case $checktype in
 disk) # Check disk usage
+  availrequired
   size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
@@ -169,7 +192,7 @@ disk) # Check disk usage
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then
       echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
-      exit $STATE_CRITICAL
+      exit $STATE_WARNING
     else
       echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_OK
@@ -182,6 +205,7 @@ disk) # Check disk usage
   ;;
 
 mem) # Check memory usage
+  availrequired
   size=$(echo $esstatus | jshon -e nodes -e jvm -e mem -e "heap_used_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
@@ -191,7 +215,7 @@ mem) # Check memory usage
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then
       echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
-      exit $STATE_CRITICAL
+      exit $STATE_WARNING
     else
       echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_OK
@@ -201,6 +225,27 @@ mem) # Check memory usage
     echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;;;;"
     exit $STATE_OK
   fi
+  ;;
+
+status) # Check Elasticsearch status
+  status=$(echo $esstatus | jshon -e status -u)
+  shards=$(echo $esstatus | jshon -e indices -e shards -e total -u)
+  docs=$(echo $esstatus | jshon -e indices -e docs -e count -u)
+  nodest=$(echo $esstatus | jshon -e nodes -e count -e total -u)
+  nodesd=$(echo $esstatus | jshon -e nodes -e count -e data -u)
+  relocating=$(echo $eshealth | jshon -e relocating_shards -u)
+  init=$(echo $eshealth | jshon -e initializing_shards -u)
+  unass=$(echo $eshealth | jshon -e unassigned_shards -u)
+  if [ "$status" = "green" ]; then 
+    echo "ES SYSTEM OK - Elasticsearch Cluster is green (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
+    exit $STATE_OK
+  elif [ "$status" = "yellow" ]; then
+    echo "ES SYSTEM WARNING - Elasticsearch Cluster is yellow (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${relocating} relocating shards, ${init} initializing shards, ${unass} unassigned shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
+      exit $STATE_WARNING
+  elif [ "$status" = "red" ]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch Cluster is red (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${relocating} relocating shards, ${init} initializing shards, ${unass} unassigned shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
+      exit $STATE_CRITICAL
+  fi  
   ;;
 
 *) help
