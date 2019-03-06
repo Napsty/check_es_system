@@ -2,7 +2,7 @@
 Monitoring plugin to check the status of an ElasticSearch cluster node. 
 Besides the classical status check (green, yellow, red) this plugin also allows to monitor disk or memory usage of Elasticsearch. This is especially helpful when running Elasticsearch in the cloud (e.g. Elasticsearch as a service). 
 
-Please refer to http://www.claudiokuenzler.com/nagios-plugins/check_es_system.php for full documentation and usage examples.
+Please refer to https://www.claudiokuenzler.com/monitoring-plugins/check_es_system.php for full documentation and usage examples.
 
 Requirements
 ------
