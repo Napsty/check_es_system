@@ -36,6 +36,7 @@
 # 20190219: Fix alternative subject name in ssl (issue 4), direct to auth      #
 # 20190220: Added status check type                                            #
 # 20190403: Check for mandatory parameter checktype, adjust help               #
+# 20190403: Catch connection refused error                                     #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -43,7 +44,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.2
+version=1.3
 port=9200
 httpscheme=http
 unit=G
@@ -149,7 +150,10 @@ eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
 if [[ -z $user ]]; then 
   # Without authentication
   esstatus=$(curl -k -s --max-time ${max_time} $esurl)
-  if [[ $? -eq 28 ]]; then
+  if [[ $? -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $? -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
   fi
@@ -163,11 +167,14 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   # Authentication required
   authlogic
   esstatus=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $esurl)
-  if [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
-    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+  if [[ $? -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
     exit $STATE_CRITICAL
   elif [[ $? -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
