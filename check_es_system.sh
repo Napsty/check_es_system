@@ -35,6 +35,7 @@
 # 20180313: Configure max_time for Elastic to respond (@deric)                 #
 # 20190219: Fix alternative subject name in ssl (issue 4), direct to auth      #
 # 20190220: Added status check type                                            #
+# 20190403: Check for mandatory parameter checktype, adjust help               #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -42,7 +43,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.1
+version=1.2
 port=9200
 httpscheme=http
 unit=G
@@ -54,7 +55,7 @@ max_time=30
 help () {
 echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributers (published below GPL licence)
 
-Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype -d available [-o unit] [-w warn] [-c crit] [-m max_time]
+Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype [-d int] [-o unit] [-w int] [-c int] [-m int]
 
 Options:
 
@@ -68,7 +69,7 @@ Options:
      -o Disk space unit (K|M|G) (defaults to G)
      -w Warning threshold in percent (default: 80)
      -c Critical threshold in percent (default: 95)
-     -m Maximum time in seconds to wait for response (default: 30s)
+     -m Maximum time in seconds to wait for response (default: 30)
      -h Help!
 
 *mandatory options
@@ -140,6 +141,7 @@ done
 
 # Check for mandatory opts
 if [ -z ${host} ]; then help; exit $STATE_UNKNOWN; fi
+if [ -z ${checktype} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Retrieve information from Elasticsearch
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
