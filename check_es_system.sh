@@ -167,11 +167,14 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   # Authentication required
   authlogic
   esstatus=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $esurl)
-  if [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
-    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+  if [[ $? -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
     exit $STATE_CRITICAL
   elif [[ $? -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
