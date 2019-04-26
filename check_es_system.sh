@@ -3,8 +3,9 @@
 # Script:       check_es_system.sh                                             #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
 # Purpose:      Monitor ElasticSearch Store (Disk) Usage                       #
-# Licence:      GPLv2                                                          #
-# Licence :     GNU General Public Licence (GPL) http://www.gnu.org/           #
+# Official doc: https://www.claudiokuenzler.com/monitoring-plugins/            #
+# License:      GPLv2                                                          #
+# GNU General Public Licence (GPL) http://www.gnu.org/                         #
 # This program is free software; you can redistribute it and/or                #
 # modify it under the terms of the GNU General Public License                  #
 # as published by the Free Software Foundation; either version 2               #
@@ -37,6 +38,7 @@
 # 20190220: Added status check type                                            #
 # 20190403: Check for mandatory parameter checktype, adjust help               #
 # 20190403: Catch connection refused error                                     #
+# 20190426: Catch unauthorized (403) error                                     #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -44,7 +46,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.3
+version=1.4
 port=9200
 httpscheme=http
 unit=G
@@ -175,6 +177,9 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
     exit $STATE_CRITICAL
   elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
