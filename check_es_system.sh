@@ -39,6 +39,7 @@
 # 20190403: Check for mandatory parameter checktype, adjust help               #
 # 20190403: Catch connection refused error                                     #
 # 20190426: Catch unauthorized (403) error                                     #
+# 20190626: Added readonly check type
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -46,10 +47,11 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.4
+version=1.5
 port=9200
 httpscheme=http
 unit=G
+indexes='_all'
 warning=80
 critical=95
 max_time=30
@@ -62,21 +64,22 @@ Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t chec
 
 Options:
 
-   * -H Hostname or ip address of ElasticSearch Node
-     -P Port (defaults to 9200)
-     -S Use https
-     -u Username if authentication is required
-     -p Password if authentication is required
-   * -t Type of check (disk|mem|status)
-   + -d Available size of disk or memory (ex. 20)
-     -o Disk space unit (K|M|G) (defaults to G)
-     -w Warning threshold in percent (default: 80)
-     -c Critical threshold in percent (default: 95)
-     -m Maximum time in seconds to wait for response (default: 30)
-     -h Help!
+   *  -H Hostname or ip address of ElasticSearch Node
+      -P Port (defaults to 9200)
+      -S Use https
+      -u Username if authentication is required
+      -p Password if authentication is required
+   *  -t Type of check (disk|mem|status|readonly)
+   +  -d Available size of disk or memory (ex. 20)
+      -o Disk space unit (K|M|G) (defaults to G)
+      -i Space separated list of indexes to be checked for readonly (default: '_all')
+      -w Warning threshold in percent (default: 80)
+      -c Critical threshold in percent (default: 95)
+      -m Maximum time in seconds to wait for response (default: 30)
+      -h Help!
 
 *mandatory options
-+mandatory options for types disk,mem
++mandatory option for types disk,mem
 
 Requirements: curl, jshon, expr"
 exit $STATE_UNKNOWN;
@@ -124,7 +127,7 @@ done
 if [ "${1}" = "--help" -o "${#}" = "0" ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Get user-given variables
-while getopts "H:P:Su:p:d:o:w:c:t:m:" Input;
+while getopts "H:P:Su:p:d:o:i:w:c:t:m:" Input;
 do
   case ${Input} in
   H)      host=${OPTARG};;
@@ -134,6 +137,7 @@ do
   p)      pass=${OPTARG};;
   d)      available=${OPTARG};;
   o)      unit=${OPTARG};;
+  i)      indexes=${OPTARG};;
   w)      warning=${OPTARG};;
   c)      critical=${OPTARG};;
   t)      checktype=${OPTARG};;
@@ -147,6 +151,7 @@ if [ -z ${host} ]; then help; exit $STATE_UNKNOWN; fi
 if [ -z ${checktype} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Retrieve information from Elasticsearch
+getstatus() {
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
 eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
 if [[ -z $user ]]; then 
@@ -193,12 +198,13 @@ if [[ -z $esstatus ]] || [[ $esstatus = '' ]]; then
   echo "ES SYSTEM UNKNOWN - Empty reply from server (verify ssl settings)"
   exit $STATE_UNKNOWN
 fi
-
-
+}
+################################################################################
 # Do the checks
 case $checktype in
 disk) # Check disk usage
   availrequired
+  getstatus
   size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
@@ -222,6 +228,7 @@ disk) # Check disk usage
 
 mem) # Check memory usage
   availrequired
+  getstatus
   size=$(echo $esstatus | jshon -e nodes -e jvm -e mem -e "heap_used_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
@@ -244,6 +251,7 @@ mem) # Check memory usage
   ;;
 
 status) # Check Elasticsearch status
+  getstatus
   status=$(echo $esstatus | jshon -e status -u)
   shards=$(echo $esstatus | jshon -e indices -e shards -e total -u)
   docs=$(echo $esstatus | jshon -e indices -e docs -e count -u)
@@ -262,6 +270,61 @@ status) # Check Elasticsearch status
     echo "ES SYSTEM CRITICAL - Elasticsearch Cluster is red (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${relocating} relocating shards, ${init} initializing shards, ${unass} unassigned shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
       exit $STATE_CRITICAL
   fi  
+  ;;
+
+readonly) # Check Readonly status on given indexes
+  icount=0
+  for index in $indexes; do 
+    if [[ -z $user ]]; then
+      # Without authentication
+      settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
+      if [[ $? -eq 7 ]]; then
+        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+        exit $STATE_CRITICAL
+      elif [[ $? -eq 28 ]]; then
+        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+        exit $STATE_CRITICAL
+      fi
+      rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
+      if [[ $rocount -gt 0 ]]; then
+        output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
+        roerror=true
+      fi
+    fi
+
+    if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+      # Authentication required
+      authlogic
+      settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
+      if [[ $? -eq 7 ]]; then
+        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+        exit $STATE_CRITICAL
+      elif [[ $? -eq 28 ]]; then
+        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+        exit $STATE_CRITICAL
+      elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+        echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+        exit $STATE_CRITICAL
+      elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+        echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+        exit $STATE_CRITICAL
+      fi
+      rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
+      if [[ $rocount -gt 0 ]]; then
+        output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
+        roerror=true
+      fi
+    fi
+    let icount++
+  done
+
+  if [[ $roerror ]]; then 
+    echo "ES SYSTEM CRITICAL - ${output[*]}"
+    exit $STATE_CRITICAL
+  else 
+    echo "ES SYSTEM OK - Elasticsearch Indexes ($indexes) are writeable"
+    exit $STATE_OK
+  fi
   ;;
 
 *) help
