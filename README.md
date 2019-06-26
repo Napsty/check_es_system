@@ -11,4 +11,4 @@ The following commands must be available: `curl`, `jshon`, `expr`
 Usage
 ------
 
-    ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] [-d available] -t check [-o unit] [-w warn] [-c crit] [-m max_time]
+    ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] [-d available] -t check [-o unit] [-i indexes] [-w warn] [-c crit] [-m max_time]
