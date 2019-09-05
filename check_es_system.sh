@@ -39,7 +39,8 @@
 # 20190403: Check for mandatory parameter checktype, adjust help               #
 # 20190403: Catch connection refused error                                     #
 # 20190426: Catch unauthorized (403) error                                     #
-# 20190626: Added readonly check type
+# 20190626: Added readonly check type                                          #
+# 20190905: Catch empty cluster health status (issue #13)                      #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -47,7 +48,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.5
+version=1.5.1
 port=9200
 httpscheme=http
 unit=G
@@ -58,7 +59,7 @@ max_time=30
 ################################################################################
 #Functions
 help () {
-echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributers (published below GPL licence)
+echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributors
 
 Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype [-d int] [-o unit] [-w int] [-c int] [-m int]
 
@@ -157,16 +158,21 @@ eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
 if [[ -z $user ]]; then 
   # Without authentication
   esstatus=$(curl -k -s --max-time ${max_time} $esurl)
-  if [[ $? -eq 7 ]]; then
+  esstatusrc=$?
+  if [[ $esstatusrc -eq 7 ]]; then
     echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
     exit $STATE_CRITICAL
-  elif [[ $? -eq 28 ]]; then
+  elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
   if [ $checktype = status ]; then
     eshealth=$(curl -k -s --max-time ${max_time} $eshealthurl)
+    if [[ -z $eshealth ]]; then
+      echo "ES SYSTEM CRITICAL - unable to get cluster health information"
+      exit $STATE_CRITICAL
+    fi
   fi
 fi
 
@@ -174,10 +180,11 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   # Authentication required
   authlogic
   esstatus=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $esurl)
-  if [[ $? -eq 7 ]]; then
+  esstatusrc=$?
+  if [[ $esstatusrc -eq 7 ]]; then
     echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
     exit $STATE_CRITICAL
-  elif [[ $? -eq 28 ]]; then
+  elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
   elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
@@ -190,6 +197,10 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   # Additionally get cluster health infos
   if [[ $checktype = status ]]; then
     eshealth=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $eshealthurl)
+    if [[ -z $eshealth ]]; then
+      echo "ES SYSTEM CRITICAL - unable to get cluster health information"
+      exit $STATE_CRITICAL
+    fi
   fi
 fi
 
