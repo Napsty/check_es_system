@@ -41,6 +41,8 @@
 # 20190426: Catch unauthorized (403) error                                     #
 # 20190626: Added readonly check type                                          #
 # 20190905: Catch empty cluster health status (issue #13)                      #
+# 20190909: Added jthreads and tps (thread pool stats) check types             #
+# 20190909: Handle correct curl return codes                                   #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -48,13 +50,11 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.5.1
+version=1.6
 port=9200
 httpscheme=http
 unit=G
 indexes='_all'
-warning=80
-critical=95
 max_time=30
 ################################################################################
 #Functions
@@ -70,17 +70,21 @@ Options:
       -S Use https
       -u Username if authentication is required
       -p Password if authentication is required
-   *  -t Type of check (disk|mem|status|readonly)
+   *  -t Type of check (disk, mem, status, readonly, jthreads, tps)
    +  -d Available size of disk or memory (ex. 20)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of indexes to be checked for readonly (default: '_all')
-      -w Warning threshold in percent (default: 80)
-      -c Critical threshold in percent (default: 95)
+      -w Warning threshold (see usage notes below)
+      -c Critical threshold (see usage notes below)
       -m Maximum time in seconds to wait for response (default: 30)
       -h Help!
 
 *mandatory options
 +mandatory option for types disk,mem
+
+Threshold format for 'disk' and 'mem': int (for percent), defaults to 80 (warn) and 95 (crit)
+Threshold format for 'tps': int,int,int (active, queued, rejected), no defaults
+Threshold format for all other check types': int, no defaults
 
 Requirements: curl, jshon, expr"
 exit $STATE_UNKNOWN;
@@ -114,6 +118,16 @@ fi
 
 availrequired() {
 if [ -z ${available} ]; then echo "UNKNOWN - Missing parameter '-d'"; exit $STATE_UNKNOWN; fi
+}
+
+thresholdlogic () {
+if [ -n $warning ] && [ -z $critical ]; then echo "UNKNOWN - Define both warning and critical thresholds"; exit $STATE_UNKNOWN; fi
+if [ -n $critical ] && [ -z $warning ]; then echo "UNKNOWN - Define both warning and critical thresholds"; exit $STATE_UNKNOWN; fi
+}
+
+default_percentage_thresholds() {
+if [ -z $warning ] || [ "${warning}" = "" ]; then warning=80; fi
+if [ -z $critical ] || [ "${critical}" = "" ]; then critical=95; fi
 }
 ################################################################################
 # Check requirements
@@ -215,11 +229,13 @@ fi
 case $checktype in
 disk) # Check disk usage
   availrequired
+  default_percentage_thresholds
   getstatus
   size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
+    thresholdlogic
     if [ $size -ge $criticalsize ]; then
       echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
@@ -239,11 +255,13 @@ disk) # Check disk usage
 
 mem) # Check memory usage
   availrequired
+  default_percentage_thresholds
   getstatus
   size=$(echo $esstatus | jshon -e nodes -e jvm -e mem -e "heap_used_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
+    thresholdlogic
     if [ $size -ge $criticalsize ]; then
       echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit) from $available $unit|es_memory=${size}B;${warningsize};${criticalsize};;"
       exit $STATE_CRITICAL
@@ -307,10 +325,11 @@ readonly) # Check Readonly status on given indexes
       # Authentication required
       authlogic
       settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
-      if [[ $? -eq 7 ]]; then
+      settingsrc=$?
+      if [[ $settingsrc -eq 7 ]]; then
         echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
         exit $STATE_CRITICAL
-      elif [[ $? -eq 28 ]]; then
+      elif [[ $settingsrc -eq 28 ]]; then
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
       elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
@@ -337,6 +356,138 @@ readonly) # Check Readonly status on given indexes
     exit $STATE_OK
   fi
   ;;
+
+jthreads) # Check JVM threads
+  getstatus
+  threads=$(echo $esstatus | jshon -e nodes -e jvm -e "threads" -u)
+  if [ -n "${warning}" ] || [ -n "${critical}" ]; then
+    # Handle tresholds
+    thresholdlogic
+    if [[ $threads -ge $criticalsize ]]; then
+      echo "ES SYSTEM CRITICAL - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
+      exit $STATE_CRITICAL
+    elif [[ $threads -ge $warningsize ]]; then
+      echo "ES SYSTEM WARNING - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
+      exit $STATE_WARNING
+    else
+      echo "ES SYSTEM OK - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
+      exit $STATE_OK
+    fi
+  else
+    # No thresholds
+    echo "ES SYSTEM OK - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
+    exit $STATE_OK
+  fi
+  ;;
+
+tps) # Check Thread Pool Statistics
+  if [[ -z $user ]]; then
+    # Without authentication
+    threadpools=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/thread_pool)
+    threadpoolrc=$?
+    if [[ $threadpoolrc -eq 7 ]]; then
+      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+      exit $STATE_CRITICAL
+    elif [[ $threadpoolrc -eq 28 ]]; then
+      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+      exit $STATE_CRITICAL
+    fi
+    rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
+    if [[ $rocount -gt 0 ]]; then
+      output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
+      roerror=true
+    fi
+  fi
+
+  if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+    # Authentication required
+    authlogic
+    threadpools=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/thread_pool)
+    threadpoolrc=$?
+    if [[ $threadpoolrc -eq 7 ]]; then
+      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+      exit $STATE_CRITICAL
+    elif [[ $threadpoolrc -eq 28 ]]; then
+      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+      exit $STATE_CRITICAL
+    elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+      echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+      exit $STATE_CRITICAL
+    elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+      echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+      exit $STATE_CRITICAL
+    fi
+  fi
+
+  tpname=($(echo "$threadpools" | awk '{print $1"-"$2}' | sed "s/\n//g"))
+  tpactive=($(echo "$threadpools" | awk '{print $3}' | sed "s/\n//g"))
+  tpqueue=($(echo "$threadpools" | awk '{print $4}' | sed "s/\n//g"))
+  tprejected=($(echo "$threadpools" | awk '{print $5}' | sed "s/\n//g"))
+
+  if [ -n "${warning}" ] || [ -n "${critical}" ]; then
+    # Handle thresholds. They have to come in a special format: n,n,n (active, queue, rejected)
+    thresholdlogic
+    wactive=$(echo ${warning} | awk -F',' '{print $1}')
+    wqueue=$(echo ${warning} | awk -F',' '{print $2}')
+    wrejected=$(echo ${warning} | awk -F',' '{print $3}')
+    cactive=$(echo ${critical} | awk -F',' '{print $1}')
+    cqueue=$(echo ${critical} | awk -F',' '{print $2}')
+    crejected=$(echo ${critical} | awk -F',' '{print $3}')
+
+    i=0; for tp in ${tpname[*]}; do
+      perfdata[$i]="tp_${tp}_active=${tpactive[$i]};${wactive};${cactive};; tp_${tp}_queue=${tpqueue[$i]};${wqueue};${cqueue};; tp_${tp}_rejected=${tprejected[$i]};${wrejected};${crejected};; "
+      let i++
+    done
+
+    i=0
+    for tpa in $(echo ${tpactive[*]}); do
+      if [[ $tpa -ge $cactive ]]; then
+        echo "Thread Pool ${tpname[$i]} is critical: Active ($tpa) is equal or higher than threshold ($cactive)|${perfdata[*]}"
+        exit $STATE_CRITICAL
+      elif [[ $tpa -ge $wactive ]]; then
+        echo "Thread Pool ${tpname[$i]} is warning: Active ($tpa) is equal or higher threshold ($wactive)|${perfdata[*]}"
+        exit $STATE_WARNING
+      fi
+      let i++
+    done
+
+    i=0
+    for tpq in $(echo ${tpqueue[*]}); do
+      if [[ $tpq -ge $cqueue ]]; then
+        echo "Thread Pool ${tpname[$i]} is critical: Queue ($tpq) is equal or higher threshold ($cqueue)|${perfdata[*]}"
+        exit $STATE_CRITICAL
+      elif [[ $tpq -ge $wqueue ]]; then
+        echo "Thread Pool ${tpname[$i]} is warning: Queue ($tpq) is equal or higher threshold ($wqueue)|${perfdata[*]}"
+        exit $STATE_WARNING
+      fi
+      let i++
+    done
+
+    i=0
+    for tpr in $(echo ${tprejected[*]}); do
+      if [[ $tpr -ge $crejected ]]; then
+        echo "Thread Pool ${tpname[$i]} is critical: Rejected ($tpr) is equal or higher threshold ($crejected)|${perfdata[*]}"
+        exit $STATE_CRITICAL
+      elif [[ $tpr -ge $wrejected ]]; then
+        echo "Thread Pool ${tpname[$i]} is warning: Rejected ($tpr) is equal or higher threshold ($wrejected)|${perfdata[*]}"
+        exit $STATE_WARNING
+      fi
+      let i++
+    done
+
+   echo "ES SYSTEM OK - Found ${#tpname[*]} thread pools in cluster|${perfdata[*]}"
+   exit $STATE_OK
+   fi
+
+  # No Thresholds
+  i=0; for tp in ${tpname[*]}; do
+    perfdata[$i]="tp_${tp}_active=${tpactive[$i]};;;; tp_${tp}_queue=${tpqueue[$i]};;;; tp_${tp}_rejected=${tprejected[$i]};;;; "
+    let i++
+  done
+  echo "ES SYSTEM OK - Found ${#tpname[*]} thread pools in cluster|${perfdata[*]}"
+  exit $STATE_OK
+  ;;
+
 
 *) help
 esac
