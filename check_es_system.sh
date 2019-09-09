@@ -70,7 +70,7 @@ Options:
       -S Use https
       -u Username if authentication is required
       -p Password if authentication is required
-   *  -t Type of check (disk|mem|status|readonly|jthreads|tps)
+   *  -t Type of check (disk, mem, status, readonly, jthreads, tps)
    +  -d Available size of disk or memory (ex. 20)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of indexes to be checked for readonly (default: '_all')
