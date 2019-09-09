@@ -324,10 +324,11 @@ readonly) # Check Readonly status on given indexes
       # Authentication required
       authlogic
       settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
-      if [[ $? -eq 7 ]]; then
+      settingsrc=$?
+      if [[ $settingsrc -eq 7 ]]; then
         echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
         exit $STATE_CRITICAL
-      elif [[ $? -eq 28 ]]; then
+      elif [[ $settingsrc -eq 28 ]]; then
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
       elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
@@ -433,7 +434,7 @@ tps) # Check Thread Pool Statistics
     crejected=$(echo ${critical} | awk -F',' '{print $3}')
 
     i=0; for tp in ${tpname[*]}; do
-      perfdata[$i]="tp_${tp}_active=${tpactive[$i]};;;; tp_${tp}_queue=${tpqueue[$i]};;;; tp_${tp}_rejected=${tprejected[$i]};;;; "
+      perfdata[$i]="tp_${tp}_active=${tpactive[$i]};${wactive};${cactive};; tp_${tp}_queue=${tpqueue[$i]};${wqueue};${cqueue};; tp_${tp}_rejected=${tprejected[$i]};${wrejected};${crejected};; "
       let i++
     done
 
