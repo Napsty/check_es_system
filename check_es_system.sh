@@ -42,6 +42,7 @@
 # 20190626: Added readonly check type                                          #
 # 20190905: Catch empty cluster health status (issue #13)                      #
 # 20190909: Added jthreads and tps (thread pool stats) check types             #
+# 20190909: Handle correct curl return codes                                   #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
