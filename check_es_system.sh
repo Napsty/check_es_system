@@ -43,6 +43,7 @@
 # 20190905: Catch empty cluster health status (issue #13)                      #
 # 20190909: Added jthreads and tps (thread pool stats) check types             #
 # 20190909: Handle correct curl return codes                                   #
+# 20190924: Missing 'than' in tps output                                       #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -50,7 +51,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.6
+version=1.6.1
 port=9200
 httpscheme=http
 unit=G
@@ -445,7 +446,7 @@ tps) # Check Thread Pool Statistics
         echo "Thread Pool ${tpname[$i]} is critical: Active ($tpa) is equal or higher than threshold ($cactive)|${perfdata[*]}"
         exit $STATE_CRITICAL
       elif [[ $tpa -ge $wactive ]]; then
-        echo "Thread Pool ${tpname[$i]} is warning: Active ($tpa) is equal or higher threshold ($wactive)|${perfdata[*]}"
+        echo "Thread Pool ${tpname[$i]} is warning: Active ($tpa) is equal or higher than threshold ($wactive)|${perfdata[*]}"
         exit $STATE_WARNING
       fi
       let i++
@@ -454,10 +455,10 @@ tps) # Check Thread Pool Statistics
     i=0
     for tpq in $(echo ${tpqueue[*]}); do
       if [[ $tpq -ge $cqueue ]]; then
-        echo "Thread Pool ${tpname[$i]} is critical: Queue ($tpq) is equal or higher threshold ($cqueue)|${perfdata[*]}"
+        echo "Thread Pool ${tpname[$i]} is critical: Queue ($tpq) is equal or higher than threshold ($cqueue)|${perfdata[*]}"
         exit $STATE_CRITICAL
       elif [[ $tpq -ge $wqueue ]]; then
-        echo "Thread Pool ${tpname[$i]} is warning: Queue ($tpq) is equal or higher threshold ($wqueue)|${perfdata[*]}"
+        echo "Thread Pool ${tpname[$i]} is warning: Queue ($tpq) is equal or higher than threshold ($wqueue)|${perfdata[*]}"
         exit $STATE_WARNING
       fi
       let i++
@@ -466,10 +467,10 @@ tps) # Check Thread Pool Statistics
     i=0
     for tpr in $(echo ${tprejected[*]}); do
       if [[ $tpr -ge $crejected ]]; then
-        echo "Thread Pool ${tpname[$i]} is critical: Rejected ($tpr) is equal or higher threshold ($crejected)|${perfdata[*]}"
+        echo "Thread Pool ${tpname[$i]} is critical: Rejected ($tpr) is equal or higher than threshold ($crejected)|${perfdata[*]}"
         exit $STATE_CRITICAL
       elif [[ $tpr -ge $wrejected ]]; then
-        echo "Thread Pool ${tpname[$i]} is warning: Rejected ($tpr) is equal or higher threshold ($wrejected)|${perfdata[*]}"
+        echo "Thread Pool ${tpname[$i]} is warning: Rejected ($tpr) is equal or higher than threshold ($wrejected)|${perfdata[*]}"
         exit $STATE_WARNING
       fi
       let i++
