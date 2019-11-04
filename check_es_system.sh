@@ -44,6 +44,7 @@
 # 20190909: Added jthreads and tps (thread pool stats) check types             #
 # 20190909: Handle correct curl return codes                                   #
 # 20190924: Missing 'than' in tps output                                       #
+# 20191104: Added master check type                                            #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -51,7 +52,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.6.1
+version=1.7.0
 port=9200
 httpscheme=http
 unit=G
@@ -71,13 +72,14 @@ Options:
       -S Use https
       -u Username if authentication is required
       -p Password if authentication is required
-   *  -t Type of check (disk, mem, status, readonly, jthreads, tps)
+   *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
    +  -d Available size of disk or memory (ex. 20)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of indexes to be checked for readonly (default: '_all')
       -w Warning threshold (see usage notes below)
       -c Critical threshold (see usage notes below)
       -m Maximum time in seconds to wait for response (default: 30)
+      -e Expect master node (used with 'master' check)
       -h Help!
 
 *mandatory options
@@ -143,7 +145,7 @@ done
 if [ "${1}" = "--help" -o "${#}" = "0" ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Get user-given variables
-while getopts "H:P:Su:p:d:o:i:w:c:t:m:" Input;
+while getopts "H:P:Su:p:d:o:i:w:c:t:m:e:" Input;
 do
   case ${Input} in
   H)      host=${OPTARG};;
@@ -158,6 +160,7 @@ do
   c)      critical=${OPTARG};;
   t)      checktype=${OPTARG};;
   m)      max_time=${OPTARG};;
+  e)      expect_master=${OPTARG};;
   *)      help;;
   esac
 done
@@ -393,11 +396,6 @@ tps) # Check Thread Pool Statistics
       echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
       exit $STATE_CRITICAL
     fi
-    rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
-    if [[ $rocount -gt 0 ]]; then
-      output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
-      roerror=true
-    fi
   fi
 
   if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
@@ -489,6 +487,55 @@ tps) # Check Thread Pool Statistics
   exit $STATE_OK
   ;;
 
+master) # Check Cluster Master
+  if [[ -z $user ]]; then
+    # Without authentication
+    master=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/master)
+    masterrc=$?
+    if [[ $masterrc -eq 7 ]]; then
+      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+      exit $STATE_CRITICAL
+    elif [[ $masterrc -eq 28 ]]; then
+      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+      exit $STATE_CRITICAL
+    fi
+  fi
+
+  if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+    # Authentication required
+    authlogic
+    master=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/master)
+    masterrc=$?
+    if [[ $threadpoolrc -eq 7 ]]; then
+      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+      exit $STATE_CRITICAL
+    elif [[ $threadpoolrc -eq 28 ]]; then
+      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+      exit $STATE_CRITICAL
+    elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+      echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+      exit $STATE_CRITICAL
+    elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+      echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+      exit $STATE_CRITICAL
+    fi
+  fi
+
+  masternode=$(echo "$master" | awk '{print $NF}')
+
+  if [[ -n ${expect_master} ]]; then 
+    if [[ "${expect_master}" = "${masternode}" ]]; then
+      echo "ES SYSTEM OK - Master node is $masternode"
+      exit $STATE_OK
+    else 
+      echo "ES SYSTEM WARNING - Master node is $masternode but expected ${expect_master}"
+      exit $STATE_WARNING
+    fi
+  else
+    echo "ES SYSTEM OK - Master node is $masternode"
+    exit $STATE_OK
+  fi
+  ;;
 
 *) help
 esac
