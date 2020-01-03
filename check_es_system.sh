@@ -45,6 +45,7 @@
 # 20190909: Handle correct curl return codes                                   #
 # 20190924: Missing 'than' in tps output                                       #
 # 20191104: Added master check type                                            #
+# 20200103: Added json parser abstraction framework, also support jq           #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -58,12 +59,13 @@ httpscheme=http
 unit=G
 indexes='_all'
 max_time=30
+parsers=(jshon jq)
 ################################################################################
 #Functions
 help () {
 echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributors
 
-Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype [-d int] [-o unit] [-w int] [-c int] [-m int]
+Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype [-d int] [-o unit] [-w int] [-c int] [-m int] [-X parser]
 
 Options:
 
@@ -80,6 +82,8 @@ Options:
       -c Critical threshold (see usage notes below)
       -m Maximum time in seconds to wait for response (default: 30)
       -e Expect master node (used with 'master' check)
+      -X The parser to be used, by default the first parser found is the one used
+         (For the list of supported parsers see the Requirements below)
       -h Help!
 
 *mandatory options
@@ -89,7 +93,7 @@ Threshold format for 'disk' and 'mem': int (for percent), defaults to 80 (warn) 
 Threshold format for 'tps': int,int,int (active, queued, rejected), no defaults
 Threshold format for all other check types': int, no defaults
 
-Requirements: curl, jshon, expr"
+Requirements: curl, expr and one of $(IFS=,; echo "${parsers[*]}")"
 exit $STATE_UNKNOWN;
 }
 
@@ -132,20 +136,46 @@ default_percentage_thresholds() {
 if [ -z $warning ] || [ "${warning}" = "" ]; then warning=80; fi
 if [ -z $critical ] || [ "${critical}" = "" ]; then critical=95; fi
 }
-################################################################################
-# Check requirements
-for cmd in curl jshon expr; do
- if ! `which ${cmd} 1>/dev/null`; then
-   echo "UNKNOWN: ${cmd} does not exist, please check if command exists and PATH is correct"
-   exit ${STATE_UNKNOWN}
- fi
-done
+
+json_parse() {
+  json_parse_usage() { echo "$0: [-r] [-q] [-a] -x arg1 -x arg2 ..." 1>&2; exit; }
+
+  local OPTIND opt r q a x
+  while getopts ":rqax:" opt
+  do
+    case "${opt}" in
+    r)  raw=1;;
+    q)  quiet=1;; # only required for jshon
+    a)  across=1;;
+    x)  args+=("$OPTARG");;
+    *)  json_parse_usage;;
+    esac
+  done
+
+  case ${parser} in
+  jshon)
+    cmd=()
+    for arg in "${args[@]}"; do
+      cmd+=(-e $arg)
+    done
+    jshon ${raw:+-u} ${quiet:+-Q} ${across:+-a} "${cmd[@]}"
+    ;;
+  jq)
+    cmd=()
+    for arg in "${args[@]}"; do
+      cmd+=(.$arg)
+    done
+    jq ${raw:+-r} $(IFS=; echo ${across:+.[]}"${cmd[*]}")
+    ;;
+  esac
+}
+
 ################################################################################
 # Check for people who need help - aren't we all nice ;-)
 if [ "${1}" = "--help" -o "${#}" = "0" ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Get user-given variables
-while getopts "H:P:Su:p:d:o:i:w:c:t:m:e:" Input;
+while getopts "H:P:Su:p:d:o:i:w:c:t:m:e:X:" Input
 do
   case ${Input} in
   H)      host=${OPTARG};;
@@ -161,6 +191,7 @@ do
   t)      checktype=${OPTARG};;
   m)      max_time=${OPTARG};;
   e)      expect_master=${OPTARG};;
+  X)      parser=${OPTARG};;
   *)      help;;
   esac
 done
@@ -169,11 +200,33 @@ done
 if [ -z ${host} ]; then help; exit $STATE_UNKNOWN; fi
 if [ -z ${checktype} ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
+# Check requirements
+for cmd in curl expr ${parser}; do
+  if ! `which ${cmd} >/dev/null 2>&1`; then
+    echo "UNKNOWN: ${cmd} does not exist, please check if command exists and PATH is correct"
+    exit ${STATE_UNKNOWN}
+  fi
+done
+# Find parser
+if [ -z ${parser} ]; then
+  for cmd in ${parsers[@]}; do
+    if `which ${cmd} >/dev/null 2>&1`; then
+      parser=${cmd}
+      break
+    fi
+  done
+  if [ -z "${parser}" ]; then
+    echo "UNKNOWN: No JSON parser found. Either one of the following is required: $(IFS=,; echo "${parsers[*]}")"
+    exit ${STATE_UNKNOWN}
+  fi
+fi
+
+################################################################################
 # Retrieve information from Elasticsearch
 getstatus() {
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
 eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
-if [[ -z $user ]]; then 
+if [[ -z $user ]]; then
   # Without authentication
   esstatus=$(curl -k -s --max-time ${max_time} $esurl)
   esstatusrc=$?
@@ -235,7 +288,7 @@ disk) # Check disk usage
   availrequired
   default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
+  size=$(echo $esstatus | json_parse -x indices -x store -x "size_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
@@ -261,7 +314,7 @@ mem) # Check memory usage
   availrequired
   default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | jshon -e nodes -e jvm -e mem -e "heap_used_in_bytes")
+  size=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x "heap_used_in_bytes")
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
@@ -285,15 +338,15 @@ mem) # Check memory usage
 
 status) # Check Elasticsearch status
   getstatus
-  status=$(echo $esstatus | jshon -e status -u)
-  shards=$(echo $esstatus | jshon -e indices -e shards -e total -u)
-  docs=$(echo $esstatus | jshon -e indices -e docs -e count -u)
-  nodest=$(echo $esstatus | jshon -e nodes -e count -e total -u)
-  nodesd=$(echo $esstatus | jshon -e nodes -e count -e data -u)
-  relocating=$(echo $eshealth | jshon -e relocating_shards -u)
-  init=$(echo $eshealth | jshon -e initializing_shards -u)
-  unass=$(echo $eshealth | jshon -e unassigned_shards -u)
-  if [ "$status" = "green" ]; then 
+  status=$(echo $esstatus | json_parse -r -x status)
+  shards=$(echo $esstatus | json_parse -r -x indices -x shards -x total)
+  docs=$(echo $esstatus | json_parse -r -x indices -x docs -x count)
+  nodest=$(echo $esstatus | json_parse -r -x nodes -x count -x total)
+  nodesd=$(echo $esstatus | json_parse -r -x nodes -x count -x data)
+  relocating=$(echo $eshealth | json_parse -r -x relocating_shards)
+  init=$(echo $eshealth | json_parse -r -x initializing_shards)
+  unass=$(echo $eshealth | json_parse -r -x unassigned_shards)
+  if [ "$status" = "green" ]; then
     echo "ES SYSTEM OK - Elasticsearch Cluster is green (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
     exit $STATE_OK
   elif [ "$status" = "yellow" ]; then
@@ -302,12 +355,12 @@ status) # Check Elasticsearch status
   elif [ "$status" = "red" ]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch Cluster is red (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${relocating} relocating shards, ${init} initializing shards, ${unass} unassigned shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
       exit $STATE_CRITICAL
-  fi  
+  fi
   ;;
 
 readonly) # Check Readonly status on given indexes
   icount=0
-  for index in $indexes; do 
+  for index in $indexes; do
     if [[ -z $user ]]; then
       # Without authentication
       settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
@@ -318,7 +371,7 @@ readonly) # Check Readonly status on given indexes
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
       fi
-      rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
+      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
       if [[ $rocount -gt 0 ]]; then
         output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
         roerror=true
@@ -343,7 +396,7 @@ readonly) # Check Readonly status on given indexes
         echo "ES SYSTEM CRITICAL - User $user is unauthorized"
         exit $STATE_CRITICAL
       fi
-      rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
+      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
       if [[ $rocount -gt 0 ]]; then
         output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
         roerror=true
@@ -352,10 +405,10 @@ readonly) # Check Readonly status on given indexes
     let icount++
   done
 
-  if [[ $roerror ]]; then 
+  if [[ $roerror ]]; then
     echo "ES SYSTEM CRITICAL - ${output[*]}"
     exit $STATE_CRITICAL
-  else 
+  else
     echo "ES SYSTEM OK - Elasticsearch Indexes ($indexes) are writeable"
     exit $STATE_OK
   fi
@@ -363,7 +416,7 @@ readonly) # Check Readonly status on given indexes
 
 jthreads) # Check JVM threads
   getstatus
-  threads=$(echo $esstatus | jshon -e nodes -e jvm -e "threads" -u)
+  threads=$(echo $esstatus | json_parse -r -x nodes -x jvm -x "threads")
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
@@ -523,11 +576,11 @@ master) # Check Cluster Master
 
   masternode=$(echo "$master" | awk '{print $NF}')
 
-  if [[ -n ${expect_master} ]]; then 
+  if [[ -n ${expect_master} ]]; then
     if [[ "${expect_master}" = "${masternode}" ]]; then
       echo "ES SYSTEM OK - Master node is $masternode"
       exit $STATE_OK
-    else 
+    else
       echo "ES SYSTEM WARNING - Master node is $masternode but expected ${expect_master}"
       exit $STATE_WARNING
     fi
