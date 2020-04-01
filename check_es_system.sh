@@ -20,7 +20,7 @@
 # You should have received a copy of the GNU General Public License            #
 # along with this program; if not, see <https://www.gnu.org/licenses/>.        #
 #                                                                              #
-# Copyright 2016,2018,2019 Claudio Kuenzler                                    #
+# Copyright 2016,2018-2020 Claudio Kuenzler                                    #
 # Copyright 2018 Tomas Barton                                                  #
 #                                                                              #
 # History:                                                                     #
@@ -45,6 +45,7 @@
 # 20190909: Handle correct curl return codes                                   #
 # 20190924: Missing 'than' in tps output                                       #
 # 20191104: Added master check type                                            #
+# 20200401: Fix/handle 503 errors with curl exit code 0 (issue #20)            #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -52,7 +53,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.7.0
+version=1.7.1
 port=9200
 httpscheme=http
 unit=G
@@ -61,7 +62,7 @@ max_time=30
 ################################################################################
 #Functions
 help () {
-echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributors
+echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributors (open source rulez!)
 
 Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype [-d int] [-o unit] [-w int] [-c int] [-m int]
 
@@ -183,6 +184,9 @@ if [[ -z $user ]]; then
   elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "503" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
+    exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
   if [ $checktype = status ]; then
@@ -204,6 +208,9 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
     exit $STATE_CRITICAL
   elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "503" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
   elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
