@@ -244,7 +244,7 @@ disk) # Check disk usage
   availrequired
   default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | jq '.indices.store."size_in_bytes"')
+  size=$(echo $esstatus | jq -j '.indices.store."size_in_bytes"')
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
@@ -270,7 +270,7 @@ mem) # Check memory usage
   availrequired
   default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | jq '.nodes.jvm.mem."heap_used_in_bytes"')
+  size=$(echo $esstatus | jq -j '.nodes.jvm.mem."heap_used_in_bytes"')
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
@@ -294,14 +294,14 @@ mem) # Check memory usage
 
 status) # Check Elasticsearch status
   getstatus
-  status=$(echo $esstatus | jq '.status')
-  shards=$(echo $esstatus | jq '.indices.shards.total')
-  docs=$(echo $esstatus | jq '.indices.docs.count')
-  nodest=$(echo $esstatus | jq '.nodes.count.total')
-  nodesd=$(echo $esstatus | jq '.nodes.count.data')
-  relocating=$(echo $eshealth | jq '.relocating_shards')
-  init=$(echo $eshealth | jq '.initializing_shards')
-  unass=$(echo $eshealth | jq '.unassigned_shards')
+  status=$(echo $esstatus | jq -j '.status')
+  shards=$(echo $esstatus | jq -j '.indices.shards.total')
+  docs=$(echo $esstatus | jq -j '.indices.docs.count')
+  nodest=$(echo $esstatus | jq -j '.nodes.count.total')
+  nodesd=$(echo $esstatus | jq -j '.nodes.count.data')
+  relocating=$(echo $eshealth | jq -j '.relocating_shards')
+  init=$(echo $eshealth | jq -j '.initializing_shards')
+  unass=$(echo $eshealth | jq -j '.unassigned_shards')
   if [ "$status" = "green" ]; then 
     echo "ES SYSTEM OK - Elasticsearch Cluster is green (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
     exit $STATE_OK
@@ -372,7 +372,7 @@ readonly) # Check Readonly status on given indexes
 
 jthreads) # Check JVM threads
   getstatus
-  threads=$(echo $esstatus | jq '.nodes.jvm."threads"')
+  threads=$(echo $esstatus | jq -j '.nodes.jvm."threads"')
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
