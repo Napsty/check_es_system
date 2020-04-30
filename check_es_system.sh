@@ -91,7 +91,7 @@ Threshold format for 'disk' and 'mem': int (for percent), defaults to 80 (warn) 
 Threshold format for 'tps': int,int,int (active, queued, rejected), no defaults
 Threshold format for all other check types': int, no defaults
 
-Requirements: curl, jshon, expr"
+Requirements: curl, jq, expr"
 exit $STATE_UNKNOWN;
 }
 
@@ -136,7 +136,7 @@ if [ -z $critical ] || [ "${critical}" = "" ]; then critical=95; fi
 }
 ################################################################################
 # Check requirements
-for cmd in curl jshon expr; do
+for cmd in curl jq expr; do
  if ! `which ${cmd} 1>/dev/null`; then
    echo "UNKNOWN: ${cmd} does not exist, please check if command exists and PATH is correct"
    exit ${STATE_UNKNOWN}
@@ -243,7 +243,7 @@ disk) # Check disk usage
   availrequired
   default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | jshon -e indices -e store -e "size_in_bytes")
+  size=$(echo $esstatus | jq '.indices.store."size_in_bytes"')
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
@@ -269,7 +269,7 @@ mem) # Check memory usage
   availrequired
   default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | jshon -e nodes -e jvm -e mem -e "heap_used_in_bytes")
+  size=$(echo $esstatus | jq '.nodes.jvm.mem."heap_used_in_bytes"')
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
@@ -293,14 +293,14 @@ mem) # Check memory usage
 
 status) # Check Elasticsearch status
   getstatus
-  status=$(echo $esstatus | jshon -e status -u)
-  shards=$(echo $esstatus | jshon -e indices -e shards -e total -u)
-  docs=$(echo $esstatus | jshon -e indices -e docs -e count -u)
-  nodest=$(echo $esstatus | jshon -e nodes -e count -e total -u)
-  nodesd=$(echo $esstatus | jshon -e nodes -e count -e data -u)
-  relocating=$(echo $eshealth | jshon -e relocating_shards -u)
-  init=$(echo $eshealth | jshon -e initializing_shards -u)
-  unass=$(echo $eshealth | jshon -e unassigned_shards -u)
+  status=$(echo $esstatus | jq '.status')
+  shards=$(echo $esstatus | jq '.indices.shards.total')
+  docs=$(echo $esstatus | jq '.indices.docs.count')
+  nodest=$(echo $esstatus | jq '.nodes.count.total')
+  nodesd=$(echo $esstatus | jq '.nodes.count.data')
+  relocating=$(echo $eshealth | jq '.relocating_shards')
+  init=$(echo $eshealth | jq '.initializing_shards')
+  unass=$(echo $eshealth | jq '.unassigned_shards')
   if [ "$status" = "green" ]; then 
     echo "ES SYSTEM OK - Elasticsearch Cluster is green (${nodest} nodes, ${nodesd} data nodes, ${shards} shards, ${docs} docs)|total_nodes=${nodest};;;; data_nodes=${nodesd};;;; total_shards=${shards};;;; relocating_shards=${relocating};;;; initializing_shards=${init};;;; unassigned_shards=${unass};;;; docs=${docs};;;;"
     exit $STATE_OK
@@ -326,7 +326,7 @@ readonly) # Check Readonly status on given indexes
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
       fi
-      rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
+      rocount=$(echo $settings | jq --arg index $index '.[$index].settings.index.blocks.read_only' | grep -c true)
       if [[ $rocount -gt 0 ]]; then
         output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
         roerror=true
@@ -351,7 +351,7 @@ readonly) # Check Readonly status on given indexes
         echo "ES SYSTEM CRITICAL - User $user is unauthorized"
         exit $STATE_CRITICAL
       fi
-      rocount=$(echo $settings | jshon -a -e settings -e index -e blocks -e read_only_allow_delete -u -Q | grep -c true)
+      rocount=$(echo $settings | jq --arg index $index '.[$index].settings.index.blocks.read_only' | grep -c true)
       if [[ $rocount -gt 0 ]]; then
         output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
         roerror=true
@@ -371,7 +371,7 @@ readonly) # Check Readonly status on given indexes
 
 jthreads) # Check JVM threads
   getstatus
-  threads=$(echo $esstatus | jshon -e nodes -e jvm -e "threads" -u)
+  threads=$(echo $esstatus | jq '.nodes.jvm."threads"')
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
