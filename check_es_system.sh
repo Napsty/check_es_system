@@ -22,6 +22,7 @@
 #                                                                              #
 # Copyright 2016,2018-2020 Claudio Kuenzler                                    #
 # Copyright 2018 Tomas Barton                                                  #
+# Copyright 2020 NotAProfessionalDeveloper
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -47,6 +48,7 @@
 # 20191104: Added master check type                                            #
 # 20200401: Fix/handle 503 errors with curl exit code 0 (issue #20)            #
 # 20200409: Fix 503 error lookup (issue #22)                                   #
+# 20200430: Support both jshon and jq as json parsers (issue #18)              #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -54,7 +56,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.7.2
+version=1.8.0
 port=9200
 httpscheme=http
 unit=G
@@ -83,8 +85,7 @@ Options:
       -c Critical threshold (see usage notes below)
       -m Maximum time in seconds to wait for response (default: 30)
       -e Expect master node (used with 'master' check)
-      -X The parser to be used, by default the first parser found is the one used
-         (For the list of supported parsers see the Requirements below)
+      -X The json parser to be used jshon or jq (default: jshon)
       -h Help!
 
 *mandatory options
@@ -159,7 +160,7 @@ json_parse() {
     for arg in "${args[@]}"; do
       cmd+=(-e $arg)
     done
-    jshon ${raw:+-u} ${quiet:+-Q} ${across:+-a} "${cmd[@]}"
+    jshon ${quiet:+-Q} ${across:+-a} "${cmd[@]}" ${raw:+-u} 
     ;;
   jq)
     cmd=()
@@ -192,7 +193,7 @@ do
   t)      checktype=${OPTARG};;
   m)      max_time=${OPTARG};;
   e)      expect_master=${OPTARG};;
-  X)      parser=${OPTARG};;
+  X)      parser=${OPTARG:=jshon};;
   *)      help;;
   esac
 done
