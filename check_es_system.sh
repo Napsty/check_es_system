@@ -77,7 +77,7 @@ Options:
       -S Use https
       -u Username if authentication is required
       -p Password if authentication is required
-   *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
+   *  -t Type of check (disk, mem, status, readonly, readonlyallowdelete, jthreads, tps, master)
    +  -d Available size of disk or memory (ex. 20)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of indexes to be checked for readonly (default: '_all')
@@ -170,6 +170,57 @@ json_parse() {
     jq ${raw:+-r} $(IFS=; echo ${across:+.[]}"${cmd[*]}")
     ;;
   esac
+}
+
+index_check_blocks() {
+  check=${1}
+  icount=0
+  for index in $indexes; do
+    if [[ -z $user ]]; then
+      # Without authentication
+      settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
+      if [[ $? -eq 7 ]]; then
+        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+        exit $STATE_CRITICAL
+      elif [[ $? -eq 28 ]]; then
+        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+        exit $STATE_CRITICAL
+      fi
+      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x ${check} | grep -c true)
+      if [[ $rocount -gt 0 ]]; then
+        output[${icount}]="Elasticsearch Index $index is ${check} (found $rocount index(es) set to ${check})"
+        roerror=true
+      fi
+    fi
+
+    if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+      # Authentication required
+      authlogic
+      settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
+      settingsrc=$?
+      if [[ $settingsrc -eq 7 ]]; then
+        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+        exit $STATE_CRITICAL
+      elif [[ $settingsrc -eq 28 ]]; then
+        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+        exit $STATE_CRITICAL
+      elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+        echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+        exit $STATE_CRITICAL
+      elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+        echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+        exit $STATE_CRITICAL
+      fi
+      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x ${check} | grep -c true)
+      if [[ $rocount -gt 0 ]]; then
+        output[${icount}]="Elasticsearch Index $index is ${check} (found $rocount index(es) set to ${check})"
+        roerror=true
+      fi
+    fi
+    let icount++
+  done
+  
+
 }
 
 ################################################################################
@@ -367,52 +418,18 @@ status) # Check Elasticsearch status
   ;;
 
 readonly) # Check Readonly status on given indexes
-  icount=0
-  for index in $indexes; do
-    if [[ -z $user ]]; then
-      # Without authentication
-      settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
-      if [[ $? -eq 7 ]]; then
-        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-        exit $STATE_CRITICAL
-      elif [[ $? -eq 28 ]]; then
-        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-        exit $STATE_CRITICAL
-      fi
-      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
-      if [[ $rocount -gt 0 ]]; then
-        output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
-        roerror=true
-      fi
-    fi
+  index_check_blocks read_only
+  if [[ $roerror ]]; then
+    echo "ES SYSTEM CRITICAL - ${output[*]}"
+    exit $STATE_CRITICAL
+  else
+    echo "ES SYSTEM OK - Elasticsearch Indexes ($indexes) are writeable"
+    exit $STATE_OK
+  fi
+  ;;
 
-    if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
-      # Authentication required
-      authlogic
-      settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
-      settingsrc=$?
-      if [[ $settingsrc -eq 7 ]]; then
-        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-        exit $STATE_CRITICAL
-      elif [[ $settingsrc -eq 28 ]]; then
-        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-        exit $STATE_CRITICAL
-      elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
-        echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
-        exit $STATE_CRITICAL
-      elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
-        echo "ES SYSTEM CRITICAL - User $user is unauthorized"
-        exit $STATE_CRITICAL
-      fi
-      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
-      if [[ $rocount -gt 0 ]]; then
-        output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
-        roerror=true
-      fi
-    fi
-    let icount++
-  done
-
+readonlyallowdelete) # Check Readonly allow delete status on given indexes
+  index_check_blocks read_only_allow_delete
   if [[ $roerror ]]; then
     echo "ES SYSTEM CRITICAL - ${output[*]}"
     exit $STATE_CRITICAL
