@@ -22,7 +22,7 @@
 #                                                                              #
 # Copyright 2016,2018-2020 Claudio Kuenzler                                    #
 # Copyright 2018 Tomas Barton                                                  #
-# Copyright 2020 NotAProfessionalDeveloper
+# Copyright 2020 NotAProfessionalDeveloper                                     #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
