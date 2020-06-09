@@ -143,8 +143,8 @@ if [ -z $critical ] || [ "${critical}" = "" ]; then critical=95; fi
 json_parse() {
   json_parse_usage() { echo "$0: [-r] [-q] [-c] [-a] -x arg1 -x arg2 ..." 1>&2; exit; }
 
-  local OPTIND opt r q a x
-  while getopts ":rqax:" opt
+  local OPTIND opt r q c a x
+  while getopts ":rqcax:" opt
   do
     case "${opt}" in
     r)  raw=1;;
