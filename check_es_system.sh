@@ -415,14 +415,14 @@ readonly) # Check Readonly status on given indexes
       roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
       if [[ $rocount -gt 0 ]]; then
         if [[ "$index" = "_all" ]]; then 
-          output[${icount}]=" $rocount index(es) found read-only -"
+          output[ro]=" $rocount index(es) found read-only -"
         else output[${icount}]=" $index is read-only -"
         fi
         roerror=true
       fi
       if [[ $roadcount -gt 0 ]]; then
         if [[ "$index" = "_all" ]]; then 
-          output[${icount}]=" $rocount index(es) found read-only (allow delete) -"
+          output[road]=" $rocount index(es) found read-only (allow delete) -"
         else output[${icount}]=" $index is read-only (allow delete) -"
         fi
         roerror=true
