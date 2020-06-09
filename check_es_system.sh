@@ -3,7 +3,7 @@
 # Script:       check_es_system.sh                                             #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
 # Purpose:      Monitor ElasticSearch Store (Disk) Usage                       #
-# Official doc: https://www.claudiokuenzler.com/monitoring-plugins/            #
+# Official doc: www.claudiokuenzler.com/monitoring-plugins/check_es_system.php #
 # License:      GPLv2                                                          #
 # GNU General Public Licence (GPL) http://www.gnu.org/                         #
 # This program is free software; you can redistribute it and/or                #
@@ -14,7 +14,6 @@
 # This program is distributed in the hope that it will be useful,              #
 # but WITHOUT ANY WARRANTY; without even the implied warranty of               #
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the                #
-#                                                                              #
 # GNU General Public License for more details.                                 #
 #                                                                              #
 # You should have received a copy of the GNU General Public License            #
