@@ -162,7 +162,7 @@ json_parse() {
     for arg in "${args[@]}"; do
       cmd+=(-e $arg)
     done
-    jshon ${quiet:+-Q} ${continue:+-Q} ${across:+-a} "${cmd[@]}" ${raw:+-u}
+    jshon ${quiet:+-Q} ${continue:+-C} ${across:+-a} "${cmd[@]}" ${raw:+-u}
     ;;
   jq)
     cmd=()
