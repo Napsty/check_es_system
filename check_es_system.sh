@@ -3,7 +3,7 @@
 # Script:       check_es_system.sh                                             #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
 # Purpose:      Monitor ElasticSearch Store (Disk) Usage                       #
-# Official doc: https://www.claudiokuenzler.com/monitoring-plugins/            #
+# Official doc: www.claudiokuenzler.com/monitoring-plugins/check_es_system.php #
 # License:      GPLv2                                                          #
 # GNU General Public Licence (GPL) http://www.gnu.org/                         #
 # This program is free software; you can redistribute it and/or                #
@@ -14,7 +14,6 @@
 # This program is distributed in the hope that it will be useful,              #
 # but WITHOUT ANY WARRANTY; without even the implied warranty of               #
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the                #
-#                                                                              #
 # GNU General Public License for more details.                                 #
 #                                                                              #
 # You should have received a copy of the GNU General Public License            #
@@ -22,7 +21,7 @@
 #                                                                              #
 # Copyright 2016,2018-2020 Claudio Kuenzler                                    #
 # Copyright 2018 Tomas Barton                                                  #
-# Copyright 2020 NotAProfessionalDeveloper
+# Copyright 2020 NotAProfessionalDeveloper                                     #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -49,6 +48,7 @@
 # 20200401: Fix/handle 503 errors with curl exit code 0 (issue #20)            #
 # 20200409: Fix 503 error lookup (issue #22)                                   #
 # 20200430: Support both jshon and jq as json parsers (issue #18)              #
+# 20200609: Fix readonly check on ALL indices (issue #26)                      #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -56,7 +56,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.8.0
+version=1.8.1
 port=9200
 httpscheme=http
 unit=G
@@ -140,14 +140,15 @@ if [ -z $critical ] || [ "${critical}" = "" ]; then critical=95; fi
 }
 
 json_parse() {
-  json_parse_usage() { echo "$0: [-r] [-q] [-a] -x arg1 -x arg2 ..." 1>&2; exit; }
+  json_parse_usage() { echo "$0: [-r] [-q] [-c] [-a] -x arg1 -x arg2 ..." 1>&2; exit; }
 
-  local OPTIND opt r q a x
-  while getopts ":rqax:" opt
+  local OPTIND opt r q c a x
+  while getopts ":rqcax:" opt
   do
     case "${opt}" in
     r)  raw=1;;
     q)  quiet=1;; # only required for jshon
+    c)  continue=1;; # only required for jshon
     a)  across=1;;
     x)  args+=("$OPTARG");;
     *)  json_parse_usage;;
@@ -160,7 +161,7 @@ json_parse() {
     for arg in "${args[@]}"; do
       cmd+=(-e $arg)
     done
-    jshon ${quiet:+-Q} ${across:+-a} "${cmd[@]}" ${raw:+-u} 
+    jshon ${quiet:+-Q} ${continue:+-C} ${across:+-a} "${cmd[@]}" ${raw:+-u}
     ;;
   jq)
     cmd=()
@@ -379,9 +380,14 @@ readonly) # Check Readonly status on given indexes
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
       fi
-      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
+      rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
+      roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
       if [[ $rocount -gt 0 ]]; then
-        output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
+        output[${icount}]=" $index is read-only -"
+        roerror=true
+      fi
+      if [[ $roadcount -gt 0 ]]; then
+        output[${icount}]+=" $index is read-only (allow delete) -"
         roerror=true
       fi
     fi
@@ -404,9 +410,20 @@ readonly) # Check Readonly status on given indexes
         echo "ES SYSTEM CRITICAL - User $user is unauthorized"
         exit $STATE_CRITICAL
       fi
-      rocount=$(echo $settings | json_parse -r -q -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
+      rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
+      roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
       if [[ $rocount -gt 0 ]]; then
-        output[${icount}]="Elasticsearch Index $index is read-only (found $rocount index(es) set to read-only)"
+        if [[ "$index" = "_all" ]]; then 
+          output[${icount}]=" $rocount index(es) found read-only -"
+        else output[${icount}]=" $index is read-only -"
+        fi
+        roerror=true
+      fi
+      if [[ $roadcount -gt 0 ]]; then
+        if [[ "$index" = "_all" ]]; then 
+          output[${icount}]+=" $rocount index(es) found read-only (allow delete) -"
+        else output[${icount}]+=" $index is read-only (allow delete) -"
+        fi
         roerror=true
       fi
     fi
