@@ -22,6 +22,7 @@
 # Copyright 2016,2018-2020 Claudio Kuenzler                                    #
 # Copyright 2018 Tomas Barton                                                  #
 # Copyright 2020 NotAProfessionalDeveloper                                     #
+# Copyright 2020 tatref                                                        #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -49,6 +50,7 @@
 # 20200409: Fix 503 error lookup (issue #22)                                   #
 # 20200430: Support both jshon and jq as json parsers (issue #18)              #
 # 20200609: Fix readonly check on ALL indices (issue #26)                      #
+# 20200723: Add cluster name to status output                                  #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -56,7 +58,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.8.1
+version=1.9.0
 port=9200
 httpscheme=http
 unit=G
