@@ -51,6 +51,7 @@
 # 20200430: Support both jshon and jq as json parsers (issue #18)              #
 # 20200609: Fix readonly check on ALL indices (issue #26)                      #
 # 20200723: Add cluster name to status output                                  #
+# 20200824: Fix typo in readonly check output                                  #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -58,7 +59,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.9.0
+version=1.9.1
 port=9200
 httpscheme=http
 unit=G
@@ -424,7 +425,7 @@ readonly) # Check Readonly status on given indexes
       fi
       if [[ $roadcount -gt 0 ]]; then
         if [[ "$index" = "_all" ]]; then 
-          output[${icount}]+=" $rocount index(es) found read-only (allow delete) -"
+          output[${icount}]+=" $roadcount index(es) found read-only (allow delete) -"
         else output[${icount}]+=" $index is read-only (allow delete) -"
         fi
         roerror=true
