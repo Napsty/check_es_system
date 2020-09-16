@@ -51,7 +51,8 @@
 # 20200430: Support both jshon and jq as json parsers (issue #18)              #
 # 20200609: Fix readonly check on ALL indices (issue #26)                      #
 # 20200723: Add cluster name to status output                                  #
-# 20200817: Internal renaming of -i parameter, use for tps check (issue #28)   #
+# 20200824: Fix typo in readonly check output                                  #
+# 20200916: Internal renaming of -i parameter, use for tps check (issue #28)   #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -425,7 +426,7 @@ readonly) # Check Readonly status on given indexes
       fi
       if [[ $roadcount -gt 0 ]]; then
         if [[ "$index" = "_all" ]]; then 
-          output[${icount}]+=" $rocount index(es) found read-only (allow delete) -"
+          output[${icount}]+=" $roadcount index(es) found read-only (allow delete) -"
         else output[${icount}]+=" $index is read-only (allow delete) -"
         fi
         roerror=true
