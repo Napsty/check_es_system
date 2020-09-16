@@ -52,6 +52,7 @@
 # 20200609: Fix readonly check on ALL indices (issue #26)                      #
 # 20200723: Add cluster name to status output                                  #
 # 20200824: Fix typo in readonly check output                                  #
+# 20200916: Internal renaming of -i parameter, use for tps check (issue #28)   #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -59,11 +60,11 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.9.1
+version=1.10.0
 port=9200
 httpscheme=http
 unit=G
-indexes='_all'
+include='_all'
 max_time=30
 parsers=(jshon jq)
 ################################################################################
@@ -83,7 +84,7 @@ Options:
    *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
    +  -d Available size of disk or memory (ex. 20)
       -o Disk space unit (K|M|G) (defaults to G)
-      -i Space separated list of indexes to be checked for readonly (default: '_all')
+      -i Space separated list of included object names to be checked (index names on readonly check, pool names on tps check)
       -w Warning threshold (see usage notes below)
       -c Critical threshold (see usage notes below)
       -m Maximum time in seconds to wait for response (default: 30)
@@ -191,7 +192,7 @@ do
   p)      pass=${OPTARG};;
   d)      available=${OPTARG};;
   o)      unit=${OPTARG};;
-  i)      indexes=${OPTARG};;
+  i)      include=${OPTARG};;
   w)      warning=${OPTARG};;
   c)      critical=${OPTARG};;
   t)      checktype=${OPTARG};;
@@ -373,7 +374,7 @@ status) # Check Elasticsearch status
 
 readonly) # Check Readonly status on given indexes
   icount=0
-  for index in $indexes; do
+  for index in $include; do
     if [[ -z $user ]]; then
       # Without authentication
       settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
@@ -438,7 +439,7 @@ readonly) # Check Readonly status on given indexes
     echo "ES SYSTEM CRITICAL - ${output[*]}"
     exit $STATE_CRITICAL
   else
-    echo "ES SYSTEM OK - Elasticsearch Indexes ($indexes) are writeable"
+    echo "ES SYSTEM OK - Elasticsearch Indexes ($include) are writeable"
     exit $STATE_OK
   fi
   ;;
@@ -496,6 +497,15 @@ tps) # Check Thread Pool Statistics
       exit $STATE_CRITICAL
     elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
       echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+      exit $STATE_CRITICAL
+    fi
+  fi
+
+  if ! [[ $include = "_all"  ]]; then
+    tpsgrep=$(echo "$include" | sed "s/ /|/g")
+    threadpools=$(echo "$threadpools" | egrep -i "(${tpsgrep})")
+    if [[ $(echo ${threadpools[*]}) = "" ]]; then
+      echo "Thread Pool check is critical: No thread pools found with given name(s): ${include}."
       exit $STATE_CRITICAL
     fi
   fi
