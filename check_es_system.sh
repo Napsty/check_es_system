@@ -66,7 +66,7 @@ httpscheme=http
 unit=G
 include='_all'
 max_time=30
-parsers=(jshon jq)
+parsers=(jq jshon)
 ################################################################################
 #Functions
 help () {
@@ -198,7 +198,7 @@ do
   t)      checktype=${OPTARG};;
   m)      max_time=${OPTARG};;
   e)      expect_master=${OPTARG};;
-  X)      parser=${OPTARG:=jshon};;
+  X)      parser=${OPTARG:=jq};;
   *)      help;;
   esac
 done
