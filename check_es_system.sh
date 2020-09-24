@@ -418,15 +418,21 @@ readonly) # Check Readonly status on given indexes
       rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
       roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
       if [[ $rocount -gt 0 ]]; then
-        if [[ "$index" = "_all" ]]; then 
-          output[${icount}]=" $rocount index(es) found read-only -"
+        if [[ "$index" = "_all" ]]; then
+          if [[ $parser = "jq" ]]; then
+            roindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only == "true").provided_name')
+          fi
+          output[${icount}]=" $rocount index(es) found read-only $roindexes -"
         else output[${icount}]=" $index is read-only -"
         fi
         roerror=true
       fi
       if [[ $roadcount -gt 0 ]]; then
-        if [[ "$index" = "_all" ]]; then 
-          output[${icount}]+=" $roadcount index(es) found read-only (allow delete) -"
+        if [[ "$index" = "_all" ]]; then
+          if [[ $parser = "jq" ]]; then
+            roadindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only_allow_delete == "true").provided_name' | tr '\n' ' ')
+          fi
+          output[${icount}]+=" $roadcount index(es) found read-only (allow delete) $roadindexes"
         else output[${icount}]+=" $index is read-only (allow delete) -"
         fi
         roerror=true
