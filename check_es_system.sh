@@ -450,10 +450,10 @@ jthreads) # Check JVM threads
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
-    if [[ $threads -ge $criticalsize ]]; then
+    if [[ $threads -ge $critical ]]; then
       echo "ES SYSTEM CRITICAL - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
       exit $STATE_CRITICAL
-    elif [[ $threads -ge $warningsize ]]; then
+    elif [[ $threads -ge $warning ]]; then
       echo "ES SYSTEM WARNING - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
       exit $STATE_WARNING
     else
