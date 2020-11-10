@@ -23,6 +23,7 @@
 # Copyright 2018 Tomas Barton                                                  #
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
+# Copyright 2020 fbomj                                                        #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -53,6 +54,7 @@
 # 20200723: Add cluster name to status output                                  #
 # 20200824: Fix typo in readonly check output                                  #
 # 20200916: Internal renaming of -i parameter, use for tps check (issue #28)   #
+# 20201110: Fix thresholds in jthreads check                                   #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -60,7 +62,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.10.0
+version=1.10.1
 port=9200
 httpscheme=http
 unit=G
