@@ -23,7 +23,7 @@
 # Copyright 2018 Tomas Barton                                                  #
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
-# Copyright 2020 fbomj                                                        #
+# Copyright 2020 fbomj                                                         #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
