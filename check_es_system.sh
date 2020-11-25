@@ -55,6 +55,7 @@
 # 20200824: Fix typo in readonly check output                                  #
 # 20200916: Internal renaming of -i parameter, use for tps check (issue #28)   #
 # 20201110: Fix thresholds in jthreads check                                   #
+# 20201125: Show names of read_only indexes with jq, set jq as default parser  #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -62,13 +63,13 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.10.1
+version=1.11.0
 port=9200
 httpscheme=http
 unit=G
 include='_all'
 max_time=30
-parsers=(jshon jq)
+parsers=(jq jshon)
 ################################################################################
 #Functions
 help () {
@@ -91,7 +92,7 @@ Options:
       -c Critical threshold (see usage notes below)
       -m Maximum time in seconds to wait for response (default: 30)
       -e Expect master node (used with 'master' check)
-      -X The json parser to be used jshon or jq (default: jshon)
+      -X The json parser to be used jshon or jq (default: jq)
       -h Help!
 
 *mandatory options
@@ -200,7 +201,7 @@ do
   t)      checktype=${OPTARG};;
   m)      max_time=${OPTARG};;
   e)      expect_master=${OPTARG};;
-  X)      parser=${OPTARG:=jshon};;
+  X)      parser=${OPTARG:=jq};;
   *)      help;;
   esac
 done
@@ -420,15 +421,21 @@ readonly) # Check Readonly status on given indexes
       rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
       roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
       if [[ $rocount -gt 0 ]]; then
-        if [[ "$index" = "_all" ]]; then 
-          output[${icount}]=" $rocount index(es) found read-only -"
+        if [[ "$index" = "_all" ]]; then
+          if [[ $parser = "jq" ]]; then
+            roindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only == "true").provided_name')
+          fi
+          output[${icount}]=" $rocount index(es) found read-only $roindexes -"
         else output[${icount}]=" $index is read-only -"
         fi
         roerror=true
       fi
       if [[ $roadcount -gt 0 ]]; then
-        if [[ "$index" = "_all" ]]; then 
-          output[${icount}]+=" $roadcount index(es) found read-only (allow delete) -"
+        if [[ "$index" = "_all" ]]; then
+          if [[ $parser = "jq" ]]; then
+            roadindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only_allow_delete == "true").provided_name' | tr '\n' ' ')
+          fi
+          output[${icount}]+=" $roadcount index(es) found read-only (allow delete) $roadindexes"
         else output[${icount}]+=" $index is read-only (allow delete) -"
         fi
         roerror=true
