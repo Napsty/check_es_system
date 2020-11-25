@@ -53,6 +53,7 @@
 # 20200723: Add cluster name to status output                                  #
 # 20200824: Fix typo in readonly check output                                  #
 # 20200916: Internal renaming of -i parameter, use for tps check (issue #28)   #
+# 20201125: Show names of read_only indexes with jq, set jq as default parser  #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -60,7 +61,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.10.0
+version=1.11.0
 port=9200
 httpscheme=http
 unit=G
@@ -89,7 +90,7 @@ Options:
       -c Critical threshold (see usage notes below)
       -m Maximum time in seconds to wait for response (default: 30)
       -e Expect master node (used with 'master' check)
-      -X The json parser to be used jshon or jq (default: jshon)
+      -X The json parser to be used jshon or jq (default: jq)
       -h Help!
 
 *mandatory options

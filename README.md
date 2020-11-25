@@ -7,7 +7,7 @@ Please refer to https://www.claudiokuenzler.com/monitoring-plugins/check_es_syst
 Requirements
 ------
 - The following commands must be available: `curl`, `expr`
-- One of the following json parsers must be available: `jshon` or `jq` (defaults to jshon)
+- One of the following json parsers must be available: `jshon` or `jq` (defaults to jq)
 
 Usage
 ------
