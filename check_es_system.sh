@@ -23,6 +23,7 @@
 # Copyright 2018 Tomas Barton                                                  #
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
+# Copyright 2020 fbomj                                                         #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -53,6 +54,7 @@
 # 20200723: Add cluster name to status output                                  #
 # 20200824: Fix typo in readonly check output                                  #
 # 20200916: Internal renaming of -i parameter, use for tps check (issue #28)   #
+# 20201110: Fix thresholds in jthreads check                                   #
 # 20201125: Show names of read_only indexes with jq, set jq as default parser  #
 ################################################################################
 #Variables and defaults
@@ -457,10 +459,10 @@ jthreads) # Check JVM threads
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
-    if [[ $threads -ge $criticalsize ]]; then
+    if [[ $threads -ge $critical ]]; then
       echo "ES SYSTEM CRITICAL - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
       exit $STATE_CRITICAL
-    elif [[ $threads -ge $warningsize ]]; then
+    elif [[ $threads -ge $warning ]]; then
       echo "ES SYSTEM WARNING - Number of JVM threads is ${threads}|es_jvm_threads=${threads};${warning};${critical};;"
       exit $STATE_WARNING
     else
