@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License            #
 # along with this program; if not, see <https://www.gnu.org/licenses/>.        #
 #                                                                              #
-# Copyright 2016,2018-2020 Claudio Kuenzler                                    #
+# Copyright 2016,2018-2021 Claudio Kuenzler                                    #
 # Copyright 2018 Tomas Barton                                                  #
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
@@ -56,6 +56,7 @@
 # 20200916: Internal renaming of -i parameter, use for tps check (issue #28)   #
 # 20201110: Fix thresholds in jthreads check                                   #
 # 20201125: Show names of read_only indexes with jq, set jq as default parser  #
+# 20210616: Fix authentication bug (#38) and non ES URL responding (#39)       #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -63,7 +64,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.11.0
+version=1.11.1
 port=9200
 httpscheme=http
 unit=G
@@ -249,6 +250,12 @@ if [[ -z $user ]]; then
   elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "Unknown resource" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
+    exit $STATE_CRITICAL
+  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
+    exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
   if [ $checktype = status ]; then
@@ -274,11 +281,17 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "Unknown resource" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
+    exit $STATE_CRITICAL
   elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
   elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
     echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
+  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
@@ -376,6 +389,7 @@ status) # Check Elasticsearch status
   ;;
 
 readonly) # Check Readonly status on given indexes
+  getstatus
   icount=0
   for index in $include; do
     if [[ -z $user ]]; then
@@ -477,6 +491,7 @@ jthreads) # Check JVM threads
   ;;
 
 tps) # Check Thread Pool Statistics
+  getstatus
   if [[ -z $user ]]; then
     # Without authentication
     threadpools=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/thread_pool)
@@ -589,6 +604,7 @@ tps) # Check Thread Pool Statistics
   ;;
 
 master) # Check Cluster Master
+  getstatus
   if [[ -z $user ]]; then
     # Without authentication
     master=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/master)
