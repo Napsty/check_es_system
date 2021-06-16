@@ -411,10 +411,10 @@ readonly) # Check Readonly status on given indexes
       elif [[ $settingsrc -eq 28 ]]; then
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
-      elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+      elif [[ -n $(echo "${esstatus} ${settings}" | grep -i "unable to authenticate") ]]; then
         echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
         exit $STATE_CRITICAL
-      elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+      elif [[ -n $(echo "${esstatus} ${settings}" | grep -i "unauthorized") ]]; then
         echo "ES SYSTEM CRITICAL - User $user is unauthorized"
         exit $STATE_CRITICAL
       fi
