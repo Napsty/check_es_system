@@ -253,6 +253,9 @@ if [[ -z $user ]]; then
   elif [[ $esstatus =~ "Unknown resource" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
     exit $STATE_CRITICAL
+  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
+    exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
   if [ $checktype = status ]; then
@@ -286,6 +289,9 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
     exit $STATE_CRITICAL
   elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
     echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
+  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
