@@ -24,6 +24,7 @@
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
 # Copyright 2020 fbomj                                                         #
+# Copyright 2021 chicco27                                                      #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -83,10 +84,12 @@ Options:
    *  -H Hostname or ip address of ElasticSearch Node
       -P Port (defaults to 9200)
       -S Use https
+      -E Certs for Authentication
+      -K Key for Authentication
+      -L Run check only on local node
       -u Username if authentication is required
       -p Password if authentication is required
    *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
-   +  -d Available size of disk or memory (ex. 20)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of included object names to be checked (index names on readonly check, pool names on tps check)
       -w Warning threshold (see usage notes below)
@@ -97,7 +100,6 @@ Options:
       -h Help!
 
 *mandatory options
-+mandatory option for types disk,mem
 
 Threshold format for 'disk' and 'mem': int (for percent), defaults to 80 (warn) and 95 (crit)
 Threshold format for 'tps': int,int,int (active, queued, rejected), no defaults
@@ -114,27 +116,30 @@ elif [[ -n $pass ]] && [[ -z $user ]]; then echo "ES SYSTEM UNKNOWN - Missing us
 fi
 }
 
+authlogic_cert () {
+if [[ -z $cert ]] && [[ -z $key ]]; then echo "ES SYSTEM UNKNOWN - Authentication required but missing cert and key"; exit $STATE_UNKNOWN
+elif [[ -n $cert ]] && [[ -z $key ]]; then echo "ES SYSTEM UNKNOWN - Authentication required but missing key"; exit $STATE_UNKNOWN
+elif [[ -n $key ]] && [[ -z $cert ]]; then echo "ES SYSTEM UNKNOWN - Missing cert"; exit $STATE_UNKNOWN
+fi
+}
+
 unitcalc() {
 # ES presents the currently used disk space in Bytes
 if [[ -n $unit ]]; then
   case $unit in
-    K) availsize=$(expr $available \* 1024); outputsize=$(expr ${size} / 1024);;
-    M) availsize=$(expr $available \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024);;
-    G) availsize=$(expr $available \* 1024 \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024 / 1024);;
+    K) availsize=$(expr $available / 1024); outputsize=$(expr ${size} / 1024);;
+    M) availsize=$(expr $available / 1024 / 1024); outputsize=$(expr ${size} / 1024 / 1024);;
+    G) availsize=$(expr $available / 1024 / 1024 / 1024); outputsize=$(expr ${size} / 1024 / 1024 / 1024);;
   esac
   if [[ -n $warning ]] ; then
-    warningsize=$(expr $warning \* ${availsize} / 100)
+    warningsize=$(expr $warning \* ${available} / 100)
   fi
   if [[ -n $critical ]] ; then
-    criticalsize=$(expr $critical \* ${availsize} / 100)
+    criticalsize=$(expr $critical \* ${available} / 100)
   fi
-  usedpercent=$(expr $size \* 100 / $availsize)
+  usedpercent=$(expr $size \* 100 / $available)
 else echo "UNKNOWN - Shouldnt exit here. No units given"; exit $STATE_UNKNOWN
 fi
-}
-
-availrequired() {
-if [ -z ${available} ]; then echo "UNKNOWN - Missing parameter '-d'"; exit $STATE_UNKNOWN; fi
 }
 
 thresholdlogic () {
@@ -186,12 +191,15 @@ json_parse() {
 if [ "${1}" = "--help" -o "${#}" = "0" ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Get user-given variables
-while getopts "H:P:Su:p:d:o:i:w:c:t:m:e:X:" Input
+while getopts "H:P:SE:K:Lu:p:d:o:i:w:c:t:m:e:X:" Input
 do
   case ${Input} in
   H)      host=${OPTARG};;
   P)      port=${OPTARG};;
   S)      httpscheme=https;;
+  E)      cert=${OPTARG};;
+  K)      key=${OPTARG};;
+  L)      local=true;;
   u)      user=${OPTARG};;
   p)      pass=${OPTARG};;
   d)      available=${OPTARG};;
@@ -237,7 +245,7 @@ fi
 getstatus() {
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
 eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
-if [[ -z $user ]]; then
+if [[ -z $user ]] && [[ -z $cert ]]; then
   # Without authentication
   esstatus=$(curl -k -s --max-time ${max_time} $esurl)
   esstatusrc=$?
@@ -304,6 +312,111 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   fi
 fi
 
+if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+  # Authentication with certificate
+  authlogic_cert
+  esstatus=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} $esurl)
+  esstatusrc=$?
+  if [[ $esstatusrc -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $esstatusrc -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
+  fi
+  # Additionally get cluster health infos
+  if [[ $checktype = status ]]; then
+    eshealth=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} $eshealthurl)
+    if [[ -z $eshealth ]]; then
+      echo "ES SYSTEM CRITICAL - unable to get cluster health information"
+      exit $STATE_CRITICAL
+    fi
+  fi
+fi
+
+# Catch empty reply from server (typically happens when ssl port used with http connection)
+if [[ -z $esstatus ]] || [[ $esstatus = '' ]]; then
+  echo "ES SYSTEM UNKNOWN - Empty reply from server (verify ssl settings)"
+  exit $STATE_UNKNOWN
+fi
+}
+################################################################################
+################################################################################
+# Retrieve information from Local Node
+getnodes() {
+esurl="${httpscheme}://${host}:${port}/_nodes/_local/stats"
+
+if [[ -z $user ]] && [[ -z $cert ]]; then
+  # Without authentication
+  esstatus=$(curl -k -s --max-time ${max_time} $esurl)
+  esstatusrc=$?
+  if [[ $esstatusrc -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $esstatusrc -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
+    exit $STATE_CRITICAL
+  fi
+fi
+
+if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+  # Authentication required
+  authlogic
+  esstatus=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $esurl)
+  esstatusrc=$?
+  if [[ $esstatusrc -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $esstatusrc -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
+  fi
+fi
+
+if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+  # Authentication with certificate
+  authlogic_cert
+  esstatus=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} $esurl)
+  esstatusrc=$?
+  if [[ $esstatusrc -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $esstatusrc -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
+  fi
+fi
+
 # Catch empty reply from server (typically happens when ssl port used with http connection)
 if [[ -z $esstatus ]] || [[ $esstatus = '' ]]; then
   echo "ES SYSTEM UNKNOWN - Empty reply from server (verify ssl settings)"
@@ -314,53 +427,67 @@ fi
 # Do the checks
 case $checktype in
 disk) # Check disk usage
-  availrequired
   default_percentage_thresholds
-  getstatus
-  size=$(echo $esstatus | json_parse -x indices -x store -x "size_in_bytes")
+  if [[ ${local} ]]; then
+    getnodes
+    size=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x indices -x store -x size_in_bytes)
+    available=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x fs -x total -x total_in_bytes)
+  else
+    getstatus
+    size=$(echo $esstatus | json_parse -x indices -x store -x "size_in_bytes")
+    available=$(echo $esstatus | json_parse -x nodes -x fs -x "total_in_bytes")
+  fi
+
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
     if [ $size -ge $criticalsize ]; then
-      echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;${warningsize}B;${criticalsize}B;;"
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then
-      echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;${warningsize}B;${criticalsize}B;;"
       exit $STATE_WARNING
     else
-      echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;${warningsize}B;${criticalsize}B;;"
       exit $STATE_OK
     fi
   else
     # No thresholds
-    echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;;;;"
+    echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;;;;"
     exit $STATE_OK
   fi
   ;;
 
 mem) # Check memory usage
-  availrequired
   default_percentage_thresholds
-  getstatus
-  size=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x "heap_used_in_bytes")
+  if [[ ${local} ]]; then
+    getnodes
+    size=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x mem -x heap_used_in_bytes)
+    available=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x mem -x heap_max_in_bytes)
+  else
+    getstatus
+    size=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x "heap_used_in_bytes")
+    available=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x "heap_max_in_bytes")
+  fi
+  
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
     if [ $size -ge $criticalsize ]; then
-      echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit) from $available $unit|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit) from $availsize $unit|es_memory=${size}B;${warningsize}B;${criticalsize}B;;"
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then
-      echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_memory=${size}B;${warningsize}B;${criticalsize}B;;"
       exit $STATE_WARNING
     else
-      echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_memory=${size}B;${warningsize}B;${criticalsize}B;;"
       exit $STATE_OK
     fi
   else
     # No thresholds
-    echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;;;;"
+    echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_memory=${size}B;;;;"
     exit $STATE_OK
   fi
   ;;
@@ -392,32 +519,21 @@ readonly) # Check Readonly status on given indexes
   getstatus
   icount=0
   for index in $include; do
-    if [[ -z $user ]]; then
+    if [[ -z $user ]] && [[ -z $cert ]]; then
       # Without authentication
       settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
-      if [[ $? -eq 7 ]]; then
-        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-        exit $STATE_CRITICAL
-      elif [[ $? -eq 28 ]]; then
-        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-        exit $STATE_CRITICAL
-      fi
-      rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
-      roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
-      if [[ $rocount -gt 0 ]]; then
-        output[${icount}]=" $index is read-only -"
-        roerror=true
-      fi
-      if [[ $roadcount -gt 0 ]]; then
-        output[${icount}]+=" $index is read-only (allow delete) -"
-        roerror=true
-      fi
     fi
 
     if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
       # Authentication required
       authlogic
       settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
+    fi
+    if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+      # Authentication with certificate
+      authlogic_cert
+      settings=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} ${httpscheme}://${host}:${port}/$index/_settings)
+    fi
       settingsrc=$?
       if [[ $settingsrc -eq 7 ]]; then
         echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
@@ -605,7 +721,7 @@ tps) # Check Thread Pool Statistics
 
 master) # Check Cluster Master
   getstatus
-  if [[ -z $user ]]; then
+  if [[ -z $user ]] && [[ -z $cert ]]; then
     # Without authentication
     master=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/master)
     masterrc=$?
@@ -622,6 +738,26 @@ master) # Check Cluster Master
     # Authentication required
     authlogic
     master=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/master)
+    masterrc=$?
+    if [[ $threadpoolrc -eq 7 ]]; then
+      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+      exit $STATE_CRITICAL
+    elif [[ $threadpoolrc -eq 28 ]]; then
+      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+      exit $STATE_CRITICAL
+    elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+      echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+      exit $STATE_CRITICAL
+    elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+      echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+      exit $STATE_CRITICAL
+    fi
+  fi
+
+  if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+    # Authentication with certificate
+    authlogic_cert
+    master=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} ${httpscheme}://${host}:${port}/_cat/master)
     masterrc=$?
     if [[ $threadpoolrc -eq 7 ]]; then
       echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
