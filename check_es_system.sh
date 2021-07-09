@@ -89,7 +89,7 @@ Options:
       -L Run check only on local node
       -u Username if authentication is required
       -p Password if authentication is required
-   *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
+   *  -t Type of check (disk, mem, cpu, status, readonly, jthreads, tps, master)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of included object names to be checked (index names on readonly check, pool names on tps check)
       -w Warning threshold (see usage notes below)
@@ -101,7 +101,7 @@ Options:
 
 *mandatory options
 
-Threshold format for 'disk' and 'mem': int (for percent), defaults to 80 (warn) and 95 (crit)
+Threshold format for 'disk', 'mem', 'cpu': int (for percent), defaults to 80 (warn) and 95 (crit)
 Threshold format for 'tps': int,int,int (active, queued, rejected), no defaults
 Threshold format for all other check types': int, no defaults
 
@@ -787,6 +787,32 @@ master) # Check Cluster Master
   else
     echo "ES SYSTEM OK - Master node is $masternode"
     exit $STATE_OK
+  fi
+  ;;
+
+cpu) # Check memory usage
+  default_percentage_thresholds
+  if [[ $local ]]; then
+    getnodes
+    value=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x process -x cpu -x percent)
+  else
+    getstatus
+    value=$(echo $esstatus | json_parse -x nodes -x process -x cpu -x "percent")
+  fi
+  
+  if [ -n "${warning}" ] || [ -n "${critical}" ]; then
+    # Handle tresholds
+    thresholdlogic
+    if [ $value -ge $critical ]; then
+      echo "ES SYSTEM CRITICAL - CPU usage is at ${value}% |${warning};${critical};"
+      exit $STATE_CRITICAL
+    elif [ $value -ge $warning ]; then
+      echo "ES SYSTEM WARNING - CPU usage is at ${value}% |${warning};${critical};"
+      exit $STATE_WARNING
+    else
+      echo "ES SYSTEM OK - CPU usage is at ${value}% |${warning};${critical};"
+      exit $STATE_OK
+    fi
   fi
   ;;
 
