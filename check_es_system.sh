@@ -57,6 +57,7 @@
 # 20201110: Fix thresholds in jthreads check                                   #
 # 20201125: Show names of read_only indexes with jq, set jq as default parser  #
 # 20210616: Fix authentication bug (#38) and non ES URL responding (#39)       #
+# 20210714: add --noproxy to curl, define "curlcmd" and "curlcmdauth"          #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -64,7 +65,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.11.1
+version=1.12.0
 port=9200
 httpscheme=http
 unit=G
@@ -235,11 +236,14 @@ fi
 ################################################################################
 # Retrieve information from Elasticsearch
 getstatus() {
+# define curl-commands for all calls (with and without authentication):
+curlcmd="curl -k -s --max-time ${max_time} --noproxy ${host}"
+curlcmdauth="curl -k -s --max-time ${max_time} --noproxy ${host} --basic -u ${user}:${pass}"
 esurl="${httpscheme}://${host}:${port}/_cluster/stats"
 eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
 if [[ -z $user ]]; then
   # Without authentication
-  esstatus=$(curl -k -s --max-time ${max_time} $esurl)
+  esstatus=$($curlcmd $esurl)
   esstatusrc=$?
   if [[ $esstatusrc -eq 7 ]]; then
     echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
@@ -259,7 +263,7 @@ if [[ -z $user ]]; then
   fi
   # Additionally get cluster health infos
   if [ $checktype = status ]; then
-    eshealth=$(curl -k -s --max-time ${max_time} $eshealthurl)
+    eshealth=$($curlcmd $eshealthurl)
     if [[ -z $eshealth ]]; then
       echo "ES SYSTEM CRITICAL - unable to get cluster health information"
       exit $STATE_CRITICAL
@@ -270,7 +274,7 @@ fi
 if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   # Authentication required
   authlogic
-  esstatus=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $esurl)
+  esstatus=$($curlcmdauth $esurl)
   esstatusrc=$?
   if [[ $esstatusrc -eq 7 ]]; then
     echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
@@ -296,7 +300,7 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   fi
   # Additionally get cluster health infos
   if [[ $checktype = status ]]; then
-    eshealth=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $eshealthurl)
+    eshealth=$($curlcmdauth $eshealthurl)
     if [[ -z $eshealth ]]; then
       echo "ES SYSTEM CRITICAL - unable to get cluster health information"
       exit $STATE_CRITICAL
@@ -394,7 +398,7 @@ readonly) # Check Readonly status on given indexes
   for index in $include; do
     if [[ -z $user ]]; then
       # Without authentication
-      settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
+      settings=$($curlcmd ${httpscheme}://${host}:${port}/$index/_settings)
       if [[ $? -eq 7 ]]; then
         echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
         exit $STATE_CRITICAL
@@ -417,7 +421,7 @@ readonly) # Check Readonly status on given indexes
     if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
       # Authentication required
       authlogic
-      settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
+      settings=$($curlcmdauth ${httpscheme}://${host}:${port}/$index/_settings)
       settingsrc=$?
       if [[ $settingsrc -eq 7 ]]; then
         echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
@@ -494,7 +498,7 @@ tps) # Check Thread Pool Statistics
   getstatus
   if [[ -z $user ]]; then
     # Without authentication
-    threadpools=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/thread_pool)
+    threadpools=$($curlcmd ${httpscheme}://${host}:${port}/_cat/thread_pool)
     threadpoolrc=$?
     if [[ $threadpoolrc -eq 7 ]]; then
       echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
@@ -508,7 +512,7 @@ tps) # Check Thread Pool Statistics
   if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
     # Authentication required
     authlogic
-    threadpools=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/thread_pool)
+    threadpools=$($curlcmdauth ${httpscheme}://${host}:${port}/_cat/thread_pool)
     threadpoolrc=$?
     if [[ $threadpoolrc -eq 7 ]]; then
       echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
@@ -607,7 +611,7 @@ master) # Check Cluster Master
   getstatus
   if [[ -z $user ]]; then
     # Without authentication
-    master=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/master)
+    master=$($curlcmd ${httpscheme}://${host}:${port}/_cat/master)
     masterrc=$?
     if [[ $masterrc -eq 7 ]]; then
       echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
@@ -621,7 +625,7 @@ master) # Check Cluster Master
   if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
     # Authentication required
     authlogic
-    master=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/master)
+    master=$($curlcmdauth ${httpscheme}://${host}:${port}/_cat/master)
     masterrc=$?
     if [[ $threadpoolrc -eq 7 ]]; then
       echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
