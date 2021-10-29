@@ -19,6 +19,4 @@ script:
           set -e
           test/test_status.sh
 
-
-
   
