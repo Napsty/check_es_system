@@ -14,7 +14,7 @@ before_script:
         - sleep 10
 
 script: 
-        - ./check_es_system.sh --help
+        - ./check_es_system.sh --help || true
         - |
           set -e
           test/test_status.sh
