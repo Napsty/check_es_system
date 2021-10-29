@@ -1,0 +1,24 @@
+---
+sudo: required
+dist: focal
+language: generic
+
+services:
+        - elasticsearch
+
+before_install:
+        - sudo apt-get update -q
+        - sudo apt-get install curl jq
+
+before_script:
+        - sleep 10
+
+script: 
+        - ./check_es_system.sh --help
+        - |
+          set -e
+          test/test_status.sh
+
+
+
+  
