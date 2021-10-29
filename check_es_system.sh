@@ -78,7 +78,7 @@ parsers=(jq jshon)
 help () {
 echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributors (open source rulez!)
 
-Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype [-d int] [-o unit] [-w int] [-c int] [-m int] [-X parser]
+Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user -p pass|-E cert -K key] -t checktype [-o unit] [-w int] [-c int] [-m int] [-e string] [-X parser]
 
 Options:
 
@@ -86,6 +86,8 @@ Options:
       -L Run check on local node instead of cluster
       -P Port (defaults to 9200)
       -S Use https
+      -E Certs for Authentication
+      -K Key for Authentication
       -u Username if authentication is required
       -p Password if authentication is required
    *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
