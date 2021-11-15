@@ -66,7 +66,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.11.1
+version=1.12.0
 port=9200
 httpscheme=http
 unit=G
@@ -90,7 +90,7 @@ Options:
       -K Key for Authentication
       -u Username if authentication is required
       -p Password if authentication is required
-   *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
+   *  -t Type of check (disk, mem, cpu, status, readonly, jthreads, tps, master)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of included object names to be checked (index names on readonly check, pool names on tps check)
       -w Warning threshold (see usage notes below)
@@ -371,8 +371,8 @@ disk) # Check disk usage
     size=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x indices -x store -x size_in_bytes)
     available=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x fs -x total -x total_in_bytes)
   else
-    size=$(echo $esstatus | json_parse -x indices -x store -x "size_in_bytes")
-    available=$(echo $esstatus | json_parse -x nodes -x fs -x "total_in_bytes")
+    size=$(echo $esstatus | json_parse -x indices -x store -x size_in_bytes)
+    available=$(echo $esstatus | json_parse -x nodes -x fs -x total_in_bytes)
   fi
 
   unitcalc
@@ -400,11 +400,11 @@ mem) # Check memory usage
   getstatus
   default_percentage_thresholds
   if [[ ${local} ]]; then
-    size=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x indices -x store -x size_in_bytes)
-    available=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x fs -x total -x total_in_bytes)
+    size=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x mem -x heap_used_in_bytes)
+    available=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x mem -x heap_max_in_bytes)
   else
-    size=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x "heap_used_in_bytes")
-    available=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x "heap_max_in_bytes")
+    size=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x heap_used_in_bytes)
+    available=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x heap_max_in_bytes)
   fi
 
   unitcalc
@@ -434,7 +434,7 @@ cpu) # Check memory usage
   if [[ ${local} ]]; then
     value=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x process -x cpu -x percent)
   else
-    value=$(echo $esstatus | json_parse -x nodes -x process -x cpu -x "percent")
+    value=$(echo $esstatus | json_parse -x nodes -x process -x cpu -x percent)
   fi
 
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
