@@ -226,9 +226,9 @@ if [[ -n ${oldavailable} ]]; then
   exit ${STATE_UNKNOWN}
 fi
 
-# Local checks are only useful for cpu, mem, disk check types
-if [[ -n ${local} ]] && ( ! [[ ${checktype} =~ ^(cpu|mem|disk)$ ]] ); then
-  echo "ES SYSTEM UNKNOWN: Node local checks (-L) only work with the following check types: cpu, mem, disk"
+# Local checks are only useful for certain check types
+if [[ -n ${local} ]] && ( ! [[ ${checktype} =~ ^(cpu|mem|disk|jthreads)$ ]] ); then
+  echo "ES SYSTEM UNKNOWN: Node local checks (-L) only work with the following check types: cpu, mem, disk, jthreads"
   exit ${STATE_UNKNOWN}
 fi
 ################################################################################
@@ -273,13 +273,13 @@ if [[ -z $user ]] && [[ -z $cert ]]; then
   elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "Unknown resource" ]]; then
+  elif [[ "$esstatus" =~ "Unknown resource" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
     exit $STATE_CRITICAL
-  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+  elif ! [[ "$esstatus" =~ "cluster_name" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
     exit $STATE_CRITICAL
   fi
@@ -304,19 +304,19 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "Unknown resource" ]]; then
+  elif [[ "$esstatus" =~ "Unknown resource" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
     exit $STATE_CRITICAL
-  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+  elif [[ -n $(echo "$esstatus" | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
-  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+  elif [[ -n $(echo "$esstatus" | grep -i "unauthorized") ]]; then
     echo "ES SYSTEM CRITICAL - User $user is unauthorized"
     exit $STATE_CRITICAL
-  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+  elif ! [[ "$esstatus" =~ "cluster_name" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
     exit $STATE_CRITICAL
   fi
@@ -341,13 +341,13 @@ if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
-  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+  elif [[ -n $(echo "$esstatus" | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
-  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+  elif [[ -n $(echo "$esstatus" | grep -i "unauthorized") ]]; then
     echo "ES SYSTEM CRITICAL - User $user is unauthorized"
     exit $STATE_CRITICAL
   fi
@@ -567,7 +567,12 @@ readonly) # Check Readonly status on given indexes
 
 jthreads) # Check JVM threads
   getstatus
-  threads=$(echo $esstatus | json_parse -r -x nodes -x jvm -x "threads")
+  if [[ ${local} ]]; then
+    threads=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x threads -x count)
+  else
+    threads=$(echo $esstatus | json_parse -r -x nodes -x jvm -x "threads")
+  fi
+
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
