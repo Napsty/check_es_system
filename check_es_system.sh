@@ -225,6 +225,12 @@ if [[ -n ${oldavailable} ]]; then
   echo "ES SYSTEM UNKNOWN: -d parameter is now invalid. Limits are now discovered directly from Elasticsearch"
   exit ${STATE_UNKNOWN}
 fi
+
+# Local checks are only useful for cpu, mem, disk check types
+if [[ -n ${local} ]] && ( ! [[ ${checktype} =~ ^(cpu|mem|disk)$ ]] ); then
+  echo "ES SYSTEM UNKNOWN: Node local checks (-L) only work with the following check types: cpu, mem, disk"
+  exit ${STATE_UNKNOWN}
+fi
 ################################################################################
 # Check requirements
 for cmd in curl expr ${parser}; do
