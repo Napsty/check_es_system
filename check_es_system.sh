@@ -58,7 +58,7 @@
 # 20201110: Fix thresholds in jthreads check                                   #
 # 20201125: Show names of read_only indexes with jq, set jq as default parser  #
 # 20210616: Fix authentication bug (#38) and non ES URL responding (#39)       #
-# TBD: Added local node (-L), SSL settings (-K, -E), cpu check                 #
+# 20211202: Added local node (-L), SSL settings (-K, -E), cpu check            #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -222,7 +222,7 @@ if [[ -z ${checktype} ]]; then help; exit $STATE_UNKNOWN; fi
 
 # Check for deprecated opts
 if [[ -n ${oldavailable} ]]; then
-  echo "ES SYSTEM UNKNOWN: -d parameter is now invalid. Limits are now discovered directly from Elasticsearch"
+  echo "ES SYSTEM UNKNOWN: -d parameter is now invalid. Capacities are now discovered directly from Elasticsearch."
   exit ${STATE_UNKNOWN}
 fi
 
