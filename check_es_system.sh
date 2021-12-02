@@ -24,6 +24,7 @@
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
 # Copyright 2020 fbomj                                                         #
+# Copyright 2021 chicco27                                                      #
 #                                                                              #
 # History:                                                                     #
 # 20160429: Started programming plugin                                         #
@@ -57,6 +58,7 @@
 # 20201110: Fix thresholds in jthreads check                                   #
 # 20201125: Show names of read_only indexes with jq, set jq as default parser  #
 # 20210616: Fix authentication bug (#38) and non ES URL responding (#39)       #
+# 20211202: Added local node (-L), SSL settings (-K, -E), cpu check            #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -64,7 +66,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.11.1
+version=1.12.0
 port=9200
 httpscheme=http
 unit=G
@@ -76,17 +78,19 @@ parsers=(jq jshon)
 help () {
 echo -e "$0 $version (c) 2016-$(date +%Y) Claudio Kuenzler and contributors (open source rulez!)
 
-Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user] [-p pass] -t checktype [-d int] [-o unit] [-w int] [-c int] [-m int] [-X parser]
+Usage: ./check_es_system.sh -H ESNode [-P port] [-S] [-u user -p pass|-E cert -K key] -t checktype [-o unit] [-w int] [-c int] [-m int] [-e string] [-X parser]
 
 Options:
 
    *  -H Hostname or ip address of ElasticSearch Node
+      -L Run check on local node instead of cluster
       -P Port (defaults to 9200)
       -S Use https
+      -E Certs for Authentication
+      -K Key for Authentication
       -u Username if authentication is required
       -p Password if authentication is required
-   *  -t Type of check (disk, mem, status, readonly, jthreads, tps, master)
-   +  -d Available size of disk or memory (ex. 20)
+   *  -t Type of check (disk, mem, cpu, status, readonly, jthreads, tps, master)
       -o Disk space unit (K|M|G) (defaults to G)
       -i Space separated list of included object names to be checked (index names on readonly check, pool names on tps check)
       -w Warning threshold (see usage notes below)
@@ -97,9 +101,8 @@ Options:
       -h Help!
 
 *mandatory options
-+mandatory option for types disk,mem
 
-Threshold format for 'disk' and 'mem': int (for percent), defaults to 80 (warn) and 95 (crit)
+Threshold format for 'disk', 'mem' and 'cpu': int (for percent), defaults to 80 (warn) and 95 (crit)
 Threshold format for 'tps': int,int,int (active, queued, rejected), no defaults
 Threshold format for all other check types': int, no defaults
 
@@ -114,27 +117,30 @@ elif [[ -n $pass ]] && [[ -z $user ]]; then echo "ES SYSTEM UNKNOWN - Missing us
 fi
 }
 
+authlogic_cert () {
+if [[ -z $cert ]] && [[ -z $key ]]; then echo "ES SYSTEM UNKNOWN - Authentication required but missing cert and key"; exit $STATE_UNKNOWN
+elif [[ -n $cert ]] && [[ -z $key ]]; then echo "ES SYSTEM UNKNOWN - Authentication required but missing key"; exit $STATE_UNKNOWN
+elif [[ -n $key ]] && [[ -z $cert ]]; then echo "ES SYSTEM UNKNOWN - Missing cert"; exit $STATE_UNKNOWN
+fi
+}
+
 unitcalc() {
 # ES presents the currently used disk space in Bytes
 if [[ -n $unit ]]; then
   case $unit in
-    K) availsize=$(expr $available \* 1024); outputsize=$(expr ${size} / 1024);;
-    M) availsize=$(expr $available \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024);;
-    G) availsize=$(expr $available \* 1024 \* 1024 \* 1024); outputsize=$(expr ${size} / 1024 / 1024 / 1024);;
+    K) availsize=$(expr $available / 1024); outputsize=$(expr ${size} / 1024);;
+    M) availsize=$(expr $available / 1024 / 1024); outputsize=$(expr ${size} / 1024 / 1024);;
+    G) availsize=$(expr $available / 1024 / 1024 / 1024); outputsize=$(expr ${size} / 1024 / 1024 / 1024);;
   esac
   if [[ -n $warning ]] ; then
-    warningsize=$(expr $warning \* ${availsize} / 100)
+    warningsize=$(expr $warning \* ${available} / 100)
   fi
   if [[ -n $critical ]] ; then
-    criticalsize=$(expr $critical \* ${availsize} / 100)
+    criticalsize=$(expr $critical \* ${available} / 100)
   fi
-  usedpercent=$(expr $size \* 100 / $availsize)
+  usedpercent=$(expr $size \* 100 / $available)
 else echo "UNKNOWN - Shouldnt exit here. No units given"; exit $STATE_UNKNOWN
 fi
-}
-
-availrequired() {
-if [ -z ${available} ]; then echo "UNKNOWN - Missing parameter '-d'"; exit $STATE_UNKNOWN; fi
 }
 
 thresholdlogic () {
@@ -186,15 +192,18 @@ json_parse() {
 if [ "${1}" = "--help" -o "${#}" = "0" ]; then help; exit $STATE_UNKNOWN; fi
 ################################################################################
 # Get user-given variables
-while getopts "H:P:Su:p:d:o:i:w:c:t:m:e:X:" Input
+while getopts "H:LP:SE:K:u:p:d:o:i:w:c:t:m:e:X:" Input
 do
   case ${Input} in
   H)      host=${OPTARG};;
+  L)      local=true;;
   P)      port=${OPTARG};;
   S)      httpscheme=https;;
+  E)      cert=${OPTARG};;
+  K)      key=${OPTARG};;
   u)      user=${OPTARG};;
   p)      pass=${OPTARG};;
-  d)      available=${OPTARG};;
+  d)      oldavailable=${OPTARG};;
   o)      unit=${OPTARG};;
   i)      include=${OPTARG};;
   w)      warning=${OPTARG};;
@@ -208,8 +217,20 @@ do
 done
 
 # Check for mandatory opts
-if [ -z ${host} ]; then help; exit $STATE_UNKNOWN; fi
-if [ -z ${checktype} ]; then help; exit $STATE_UNKNOWN; fi
+if [[ -z ${host} ]]; then help; exit $STATE_UNKNOWN; fi
+if [[ -z ${checktype} ]]; then help; exit $STATE_UNKNOWN; fi
+
+# Check for deprecated opts
+if [[ -n ${oldavailable} ]]; then
+  echo "ES SYSTEM UNKNOWN: -d parameter is now invalid. Capacities are now discovered directly from Elasticsearch."
+  exit ${STATE_UNKNOWN}
+fi
+
+# Local checks are only useful for certain check types
+if [[ -n ${local} ]] && ( ! [[ ${checktype} =~ ^(cpu|mem|disk|jthreads)$ ]] ); then
+  echo "ES SYSTEM UNKNOWN: Node local checks (-L) only work with the following check types: cpu, mem, disk, jthreads"
+  exit ${STATE_UNKNOWN}
+fi
 ################################################################################
 # Check requirements
 for cmd in curl expr ${parser}; do
@@ -233,11 +254,16 @@ if [ -z ${parser} ]; then
 fi
 
 ################################################################################
-# Retrieve information from Elasticsearch
+# Retrieve information from Elasticsearch cluster
 getstatus() {
-esurl="${httpscheme}://${host}:${port}/_cluster/stats"
+if [[ ${local} ]]; then
+  esurl="${httpscheme}://${host}:${port}/_nodes/_local/stats"
+else
+  esurl="${httpscheme}://${host}:${port}/_cluster/stats"
+fi
 eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
-if [[ -z $user ]]; then
+
+if [[ -z $user ]] && [[ -z $cert ]]; then
   # Without authentication
   esstatus=$(curl -k -s --max-time ${max_time} $esurl)
   esstatusrc=$?
@@ -247,13 +273,13 @@ if [[ -z $user ]]; then
   elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "Unknown resource" ]]; then
+  elif [[ "$esstatus" =~ "Unknown resource" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
     exit $STATE_CRITICAL
-  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+  elif ! [[ "$esstatus" =~ "cluster_name" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
     exit $STATE_CRITICAL
   fi
@@ -278,25 +304,56 @@ if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   elif [[ $esstatusrc -eq 28 ]]; then
     echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "503 Service Unavailable" ]]; then
+  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
     exit $STATE_CRITICAL
-  elif [[ $esstatus =~ "Unknown resource" ]]; then
+  elif [[ "$esstatus" =~ "Unknown resource" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
     exit $STATE_CRITICAL
-  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+  elif [[ -n $(echo "$esstatus" | grep -i "unable to authenticate") ]]; then
     echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
     exit $STATE_CRITICAL
-  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+  elif [[ -n $(echo "$esstatus" | grep -i "unauthorized") ]]; then
     echo "ES SYSTEM CRITICAL - User $user is unauthorized"
     exit $STATE_CRITICAL
-  elif ! [[ $esstatus =~ "cluster_name" ]]; then
+  elif ! [[ "$esstatus" =~ "cluster_name" ]]; then
     echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
     exit $STATE_CRITICAL
   fi
   # Additionally get cluster health infos
   if [[ $checktype = status ]]; then
     eshealth=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $eshealthurl)
+    if [[ -z $eshealth ]]; then
+      echo "ES SYSTEM CRITICAL - unable to get cluster health information"
+      exit $STATE_CRITICAL
+    fi
+  fi
+fi
+
+if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+  # Authentication with certificate
+  authlogic_cert
+  esstatus=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} $esurl)
+  esstatusrc=$?
+  if [[ $esstatusrc -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $esstatusrc -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
+    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo "$esstatus" | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo "$esstatus" | grep -i "unauthorized") ]]; then
+    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
+  fi
+  # Additionally get cluster health infos
+  if [[ $checktype = status ]]; then
+    eshealth=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} $eshealthurl)
     if [[ -z $eshealth ]]; then
       echo "ES SYSTEM CRITICAL - unable to get cluster health information"
       exit $STATE_CRITICAL
@@ -314,53 +371,94 @@ fi
 # Do the checks
 case $checktype in
 disk) # Check disk usage
-  availrequired
-  default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | json_parse -x indices -x store -x "size_in_bytes")
+  default_percentage_thresholds
+  if [[ ${local} ]]; then
+    size=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x indices -x store -x size_in_bytes)
+    available=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x fs -x total -x total_in_bytes)
+  else
+    size=$(echo $esstatus | json_parse -x indices -x store -x size_in_bytes)
+    available=$(echo $esstatus | json_parse -x nodes -x fs -x total_in_bytes)
+  fi
+
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
     if [ $size -ge $criticalsize ]; then
-      echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM CRITICAL - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};0;${available}"
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then
-      echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM WARNING - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};0;${available}"
       exit $STATE_WARNING
     else
-      echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;${warningsize};${criticalsize};0;${available}"
       exit $STATE_OK
     fi
   else
     # No thresholds
-    echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_disk=${size}B;;;;"
+    echo "ES SYSTEM OK - Disk usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_disk=${size}B;;;0;${available}"
     exit $STATE_OK
   fi
   ;;
 
 mem) # Check memory usage
-  availrequired
-  default_percentage_thresholds
   getstatus
-  size=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x "heap_used_in_bytes")
+  default_percentage_thresholds
+  if [[ ${local} ]]; then
+    size=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x mem -x heap_used_in_bytes)
+    available=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x mem -x heap_max_in_bytes)
+  else
+    size=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x heap_used_in_bytes)
+    available=$(echo $esstatus | json_parse -x nodes -x jvm -x mem -x heap_max_in_bytes)
+  fi
+
   unitcalc
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
     if [ $size -ge $criticalsize ]; then
-      echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit) from $available $unit|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM CRITICAL - Memory usage is at ${usedpercent}% ($outputsize $unit) from $availsize $unit|es_memory=${size}B;${warningsize};${criticalsize};0;${available}"
       exit $STATE_CRITICAL
     elif [ $size -ge $warningsize ]; then
-      echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM WARNING - Memory usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};0;${available}"
       exit $STATE_WARNING
     else
-      echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;${warningsize};${criticalsize};;"
+      echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_memory=${size}B;${warningsize};${criticalsize};0;${available}"
       exit $STATE_OK
     fi
   else
     # No thresholds
-    echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $available $unit)|es_memory=${size}B;;;;"
+    echo "ES SYSTEM OK - Memory usage is at ${usedpercent}% ($outputsize $unit from $availsize $unit)|es_memory=${size}B;;;0;${available}"
+    exit $STATE_OK
+  fi
+  ;;
+
+cpu) # Check memory usage
+  getstatus
+  default_percentage_thresholds
+  if [[ ${local} ]]; then
+    value=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x process -x cpu -x percent)
+  else
+    value=$(echo $esstatus | json_parse -x nodes -x process -x cpu -x percent)
+  fi
+
+  if [ -n "${warning}" ] || [ -n "${critical}" ]; then
+    # Handle tresholds
+    thresholdlogic
+    if [ $value -ge $critical ]; then
+      echo "ES SYSTEM CRITICAL - CPU usage is at ${value}% |es_cpu=${value}%;${warning};${critical};0;100"
+      exit $STATE_CRITICAL
+    elif [ $value -ge $warning ]; then
+      echo "ES SYSTEM WARNING - CPU usage is at ${value}% |es_cpu=${value}%;${warning};${critical};0;100"
+      exit $STATE_WARNING
+    else
+      echo "ES SYSTEM OK - CPU usage is at ${value}% |es_cpu=${value}%;${warning};${critical};0;100"
+      exit $STATE_OK
+    fi
+  else
+    # No thresholds
+    echo "ES SYSTEM OK - CPU usage is at ${value}% |es_cpu=${value}%;${warning};${critical};0;100"
     exit $STATE_OK
   fi
   ;;
@@ -469,7 +567,12 @@ readonly) # Check Readonly status on given indexes
 
 jthreads) # Check JVM threads
   getstatus
-  threads=$(echo $esstatus | json_parse -r -x nodes -x jvm -x "threads")
+  if [[ ${local} ]]; then
+    threads=$(echo $esstatus | json_parse -x 'nodes|' -x '[]' -x jvm -x threads -x count)
+  else
+    threads=$(echo $esstatus | json_parse -r -x nodes -x jvm -x "threads")
+  fi
+
   if [ -n "${warning}" ] || [ -n "${critical}" ]; then
     # Handle tresholds
     thresholdlogic
