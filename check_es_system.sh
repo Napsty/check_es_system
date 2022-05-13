@@ -1,4 +1,6 @@
 #!/bin/bash
+set -e
+trap "echo ERROR: There was an error in ${FUNCNAME-main context}, details to follow" ERR
 ################################################################################
 # Script:       check_es_system.sh                                             #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #

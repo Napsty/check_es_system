@@ -1,6 +1,7 @@
 #!/bin/bash
 echo "Test Elasticsearch status"
 sed -i "/#\!\/bin\/bash/ a\set -e" check_es_system.sh
+sed -i '/set -e/ a\trap "echo ERROR: There was an error in ${FUNCNAME-main context}, details to follow" ERR' check_es_system.sh
 ./check_es_system.sh -H 127.0.0.1 -P 9200 -t disk
 
 if [[ $? -eq 0 ]]; then
