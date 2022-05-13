@@ -1,6 +1,6 @@
 #!/bin/bash
-set -e
 echo "Test Elasticsearch status"
+sed -i "/#\!\/bin\/bash/ a\set -e" check_es_system.sh
 ./check_es_system.sh -H 127.0.0.1 -P 9200 -t disk
 
 if [[ $? -eq 0 ]]; then
