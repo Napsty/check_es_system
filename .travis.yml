@@ -18,5 +18,6 @@ script:
         - |
           test/test_status.sh
           test/test_readonly.sh
+          test/test_disk.sh
 
   
