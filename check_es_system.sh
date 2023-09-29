@@ -3,7 +3,7 @@
 # Script:       check_es_system.sh                                             #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
 # Purpose:      Monitor ElasticSearch Store (Disk) Usage                       #
-# Official doc: www.claudiokuenzler.com/monitoring-plugins/check_es_system.php #
+# Docs:         www.claudiokuenzler.com/monitoring-plugins/check_es_system.php #
 # License:      GPLv2                                                          #
 # GNU General Public Licence (GPL) http://www.gnu.org/                         #
 # This program is free software; you can redistribute it and/or                #
@@ -19,14 +19,14 @@
 # You should have received a copy of the GNU General Public License            #
 # along with this program; if not, see <https://www.gnu.org/licenses/>.        #
 #                                                                              #
-# Copyright 2016,2018-2021 Claudio Kuenzler                                    #
+# Copyright 2016,2018-2021,2023 Claudio Kuenzler                               #
 # Copyright 2018 Tomas Barton                                                  #
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
 # Copyright 2020 fbomj                                                         #
 # Copyright 2021 chicco27                                                      #
 #                                                                              #
-# History:                                                                     #
+# History/Changelog:                                                           #
 # 20160429: Started programming plugin                                         #
 # 20160601: Continued programming. Working now as it should =)                 #
 # 20160906: Added memory usage check, check types option (-t)                  #
@@ -59,6 +59,7 @@
 # 20201125: Show names of read_only indexes with jq, set jq as default parser  #
 # 20210616: Fix authentication bug (#38) and non ES URL responding (#39)       #
 # 20211202: Added local node (-L), SSL settings (-K, -E), cpu check            #
+# 20230929: Bugfix in readonly check type for missing privileges               #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -66,7 +67,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.12.0
+version=1.12.1
 port=9200
 httpscheme=http
 unit=G
@@ -499,6 +500,10 @@ readonly) # Check Readonly status on given indexes
       elif [[ $? -eq 28 ]]; then
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
+      elif [[ "$settings" =~ "is unauthorized" ]]; then
+        errormsg=$(echo "$settings" | json_parse -r -q -c -x error -x reason)
+        echo "ES SYSTEM CRITICAL - Access denied ($errormsg)"
+        exit $STATE_CRITICAL
       fi
       rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
       roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
@@ -523,11 +528,12 @@ readonly) # Check Readonly status on given indexes
       elif [[ $settingsrc -eq 28 ]]; then
         echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
         exit $STATE_CRITICAL
-      elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+      elif [[ -n $(echo "$settings" | grep -i "unable to authenticate") ]]; then
         echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
         exit $STATE_CRITICAL
-      elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
-        echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+      elif [[ "$settings" =~ "is unauthorized" ]]; then
+        errormsg=$(echo "$settings" | json_parse -r -q -c -x error -x reason)
+        echo "ES SYSTEM CRITICAL - Access denied ($errormsg)"
         exit $STATE_CRITICAL
       fi
       rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
