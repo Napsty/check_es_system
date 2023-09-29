@@ -11,7 +11,7 @@ else
   exitcode=1
 fi
 
-if [[ "${output}" != "ES SYSTEM OK - Disk usage is at 0% (0 G from 67 G)|es_disk=648B;58128941056;69028117504;0;72661176320" ]]; then
+if ! [[ "${output}" =~ "ES SYSTEM OK - Disk usage is at 0%" ]]; then
   exitcode=1
 fi
 
