@@ -15,9 +15,8 @@ before_script:
 
 script: 
         - ./check_es_system.sh --help || true
-        - |
-          test/test_status.sh
-          test/test_readonly.sh
-          test/test_disk.sh
+        - test/test_status.sh
+        - test/test_readonly.sh
+        - test/test_disk.sh
 
   

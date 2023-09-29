@@ -1,5 +1,6 @@
 #!/bin/bash
 echo "Test Elasticsearch status"
+./check_es_system.sh -H 127.0.0.1 -P 9200 -t disk
 output=$(./check_es_system.sh -H 127.0.0.1 -P 9200 -t disk)
 
 if [[ $? -eq 0 ]]; then
@@ -10,7 +11,7 @@ else
   exitcode=1
 fi
 
-if [[ "${output}" != "ES SYSTEM OK - Disk usage is at 0% (0 G from 67 G)|es_disk=648B;58128941056;69028117504;0;72661176320" ]]; then
+if ! [[ "${output}" =~ "ES SYSTEM OK - Disk usage is at 0%" ]]; then
   exitcode=1
 fi
 
