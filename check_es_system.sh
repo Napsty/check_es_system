@@ -19,12 +19,13 @@
 # You should have received a copy of the GNU General Public License            #
 # along with this program; if not, see <https://www.gnu.org/licenses/>.        #
 #                                                                              #
-# Copyright 2016,2018-2021,2023 Claudio Kuenzler                               #
+# Copyright 2016,2018-2021,2023-2024 Claudio Kuenzler                          #
 # Copyright 2018 Tomas Barton                                                  #
 # Copyright 2020 NotAProfessionalDeveloper                                     #
 # Copyright 2020 tatref                                                        #
 # Copyright 2020 fbomj                                                         #
 # Copyright 2021 chicco27                                                      #
+# Copyright 2024 Jhonny Oliveira                                               #
 #                                                                              #
 # History/Changelog:                                                           #
 # 20160429: Started programming plugin                                         #
@@ -60,6 +61,7 @@
 # 20210616: Fix authentication bug (#38) and non ES URL responding (#39)       #
 # 20211202: Added local node (-L), SSL settings (-K, -E), cpu check            #
 # 20230929: Bugfix in readonly check type for missing privileges               #
+# 20240906: Improving code, fix cert based auth on certain types (#53)         #
 ################################################################################
 #Variables and defaults
 STATE_OK=0              # define the exit code if status is OK
@@ -67,7 +69,7 @@ STATE_WARNING=1         # define the exit code if status is Warning
 STATE_CRITICAL=2        # define the exit code if status is Critical
 STATE_UNKNOWN=3         # define the exit code if status is Unknown
 export PATH=$PATH:/usr/local/bin:/usr/bin:/bin # Set path
-version=1.12.1
+version=1.13.0
 port=9200
 httpscheme=http
 unit=G
@@ -87,8 +89,8 @@ Options:
       -L Run check on local node instead of cluster
       -P Port (defaults to 9200)
       -S Use https
-      -E Certs for Authentication
-      -K Key for Authentication
+      -E Certs for Cert based authentication
+      -K Key for Cert based authentication
       -u Username if authentication is required
       -p Password if authentication is required
    *  -t Type of check (disk, mem, cpu, status, readonly, jthreads, tps, master)
