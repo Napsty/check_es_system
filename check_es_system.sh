@@ -268,97 +268,58 @@ if [[ -z $user ]] && [[ -z $cert ]]; then
   # Without authentication
   esstatus=$(curl -k -s --max-time ${max_time} $esurl)
   esstatusrc=$?
-  if [[ $esstatusrc -eq 7 ]]; then
-    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-    exit $STATE_CRITICAL
-  elif [[ $esstatusrc -eq 28 ]]; then
-    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-    exit $STATE_CRITICAL
-  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
-    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
-    exit $STATE_CRITICAL
-  elif [[ "$esstatus" =~ "Unknown resource" ]]; then
-    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
-    exit $STATE_CRITICAL
-  elif ! [[ "$esstatus" =~ "cluster_name" ]]; then
-    echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
-    exit $STATE_CRITICAL
-  fi
-  # Additionally get cluster health infos
-  if [ $checktype = status ]; then
-    eshealth=$(curl -k -s --max-time ${max_time} $eshealthurl)
-    if [[ -z $eshealth ]]; then
-      echo "ES SYSTEM CRITICAL - unable to get cluster health information"
-      exit $STATE_CRITICAL
-    fi
-  fi
-fi
-
-if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
-  # Authentication required
+elif [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+  # Authentication with user credentials
   authlogic
   esstatus=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $esurl)
   esstatusrc=$?
-  if [[ $esstatusrc -eq 7 ]]; then
-    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-    exit $STATE_CRITICAL
-  elif [[ $esstatusrc -eq 28 ]]; then
-    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-    exit $STATE_CRITICAL
-  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
-    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
-    exit $STATE_CRITICAL
-  elif [[ "$esstatus" =~ "Unknown resource" ]]; then
-    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
-    exit $STATE_CRITICAL
-  elif [[ -n $(echo "$esstatus" | grep -i "unable to authenticate") ]]; then
-    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
-    exit $STATE_CRITICAL
-  elif [[ -n $(echo "$esstatus" | grep -i "unauthorized") ]]; then
-    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
-    exit $STATE_CRITICAL
-  elif ! [[ "$esstatus" =~ "cluster_name" ]]; then
-    echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
-    exit $STATE_CRITICAL
-  fi
-  # Additionally get cluster health infos
-  if [[ $checktype = status ]]; then
-    eshealth=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $eshealthurl)
-    if [[ -z $eshealth ]]; then
-      echo "ES SYSTEM CRITICAL - unable to get cluster health information"
-      exit $STATE_CRITICAL
-    fi
-  fi
-fi
-
-if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+elif [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
   # Authentication with certificate
   authlogic_cert
   esstatus=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} $esurl)
   esstatusrc=$?
-  if [[ $esstatusrc -eq 7 ]]; then
-    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-    exit $STATE_CRITICAL
-  elif [[ $esstatusrc -eq 28 ]]; then
-    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-    exit $STATE_CRITICAL
-  elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
-    echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
-    exit $STATE_CRITICAL
-  elif [[ -n $(echo "$esstatus" | grep -i "unable to authenticate") ]]; then
-    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
-    exit $STATE_CRITICAL
-  elif [[ -n $(echo "$esstatus" | grep -i "unauthorized") ]]; then
-    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
-    exit $STATE_CRITICAL
+fi
+
+if [[ $esstatusrc -eq 7 ]]; then
+  echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+  exit $STATE_CRITICAL
+elif [[ $esstatusrc -eq 28 ]]; then
+  echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+  exit $STATE_CRITICAL
+elif [[ "$esstatus" =~ "503 Service Unavailable" ]]; then
+  echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${host}:${port} return error 503"
+  exit $STATE_CRITICAL
+elif [[ "$esstatus" =~ "Unknown resource" ]]; then
+  echo "ES SYSTEM CRITICAL - Elasticsearch not available: ${esstatus}"
+  exit $STATE_CRITICAL
+elif [[ -n $(echo "$esstatus" | grep -i "unable to authenticate") ]]; then
+  echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+  exit $STATE_CRITICAL
+elif [[ -n $(echo "$esstatus" | grep -i "unauthorized") ]]; then
+  echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+  exit $STATE_CRITICAL
+elif ! [[ "$esstatus" =~ "cluster_name" ]]; then
+  echo "ES SYSTEM CRITICAL - Elasticsearch not available at this address ${host}:${port}"
+  exit $STATE_CRITICAL
+fi
+
+# Additionally get cluster health infos
+if [ $checktype = status ]; then
+  if [[ -z $user ]] && [[ -z $cert ]]; then
+    # Without authentication
+    eshealth=$(curl -k -s --max-time ${max_time} $eshealthurl)
   fi
-  # Additionally get cluster health infos
-  if [[ $checktype = status ]]; then
+  if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+    # Authentication required
+    eshealth=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} $eshealthurl)
+  fi
+  if [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+    # Authentication with certificate
     eshealth=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} $eshealthurl)
-    if [[ -z $eshealth ]]; then
-      echo "ES SYSTEM CRITICAL - unable to get cluster health information"
-      exit $STATE_CRITICAL
-    fi
+  fi
+  if [[ -z $eshealth ]]; then
+    echo "ES SYSTEM CRITICAL - unable to get cluster health information"
+    exit $STATE_CRITICAL
   fi
 fi
 
@@ -491,73 +452,60 @@ readonly) # Check Readonly status on given indexes
   getstatus
   icount=0
   for index in $include; do
-    if [[ -z $user ]]; then
+    if [[ -z $user ]] && [[ -z $cert ]]; then
       # Without authentication
       settings=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/$index/_settings)
-      if [[ $? -eq 7 ]]; then
-        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-        exit $STATE_CRITICAL
-      elif [[ $? -eq 28 ]]; then
-        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-        exit $STATE_CRITICAL
-      elif [[ "$settings" =~ "is unauthorized" ]]; then
-        errormsg=$(echo "$settings" | json_parse -r -q -c -x error -x reason)
-        echo "ES SYSTEM CRITICAL - Access denied ($errormsg)"
-        exit $STATE_CRITICAL
-      fi
-      rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
-      roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
-      if [[ $rocount -gt 0 ]]; then
-        output[${icount}]=" $index is read-only -"
-        roerror=true
-      fi
-      if [[ $roadcount -gt 0 ]]; then
-        output[${icount}]+=" $index is read-only (allow delete) -"
-        roerror=true
-      fi
+	  settingsrc=$?
+	elif [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+	  # Authentication with user credentials
+	  authlogic
+	  settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
+	  settingsrc=$?
+	elif [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+	  # Authentication with certificate
+	  authlogic_cert
+	  settings=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} ${httpscheme}://${host}:${port}/$index/_settings)
+	  settingsrc=$?
+	fi
+
+	# Sanity checks
+    if [[ $settingsrc -eq 7 ]]; then
+      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+      exit $STATE_CRITICAL
+    elif [[ $settingsrc -eq 28 ]]; then
+      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+      exit $STATE_CRITICAL
+	elif [[ -n $(echo "$settings" | grep -i "unable to authenticate") ]]; then
+      echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+      exit $STATE_CRITICAL
+    elif [[ "$settings" =~ "is unauthorized" ]]; then
+      errormsg=$(echo "$settings" | json_parse -r -q -c -x error -x reason)
+      echo "ES SYSTEM CRITICAL - Access denied ($errormsg)"
+      exit $STATE_CRITICAL
     fi
 
-    if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
-      # Authentication required
-      authlogic
-      settings=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/$index/_settings)
-      settingsrc=$?
-      if [[ $settingsrc -eq 7 ]]; then
-        echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-        exit $STATE_CRITICAL
-      elif [[ $settingsrc -eq 28 ]]; then
-        echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-        exit $STATE_CRITICAL
-      elif [[ -n $(echo "$settings" | grep -i "unable to authenticate") ]]; then
-        echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
-        exit $STATE_CRITICAL
-      elif [[ "$settings" =~ "is unauthorized" ]]; then
-        errormsg=$(echo "$settings" | json_parse -r -q -c -x error -x reason)
-        echo "ES SYSTEM CRITICAL - Access denied ($errormsg)"
-        exit $STATE_CRITICAL
-      fi
-      rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
-      roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
-      if [[ $rocount -gt 0 ]]; then
-        if [[ "$index" = "_all" ]]; then
-          if [[ $parser = "jq" ]]; then
-            roindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only == "true").provided_name')
-          fi
-          output[${icount}]=" $rocount index(es) found read-only $roindexes -"
-        else output[${icount}]=" $index is read-only -"
+    rocount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only | grep -c true)
+    roadcount=$(echo $settings | json_parse -r -q -c -a -x settings -x index -x blocks -x read_only_allow_delete | grep -c true)
+
+    if [[ $rocount -gt 0 ]]; then
+      if [[ "$index" = "_all" ]]; then
+        if [[ $parser = "jq" ]]; then
+          roindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only == "true").provided_name')
         fi
-        roerror=true
+        output[${icount}]=" $rocount index(es) found read-only $roindexes -"
+      else output[${icount}]=" $index is read-only -"
       fi
-      if [[ $roadcount -gt 0 ]]; then
-        if [[ "$index" = "_all" ]]; then
-          if [[ $parser = "jq" ]]; then
-            roadindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only_allow_delete == "true").provided_name' | tr '\n' ' ')
-          fi
-          output[${icount}]+=" $roadcount index(es) found read-only (allow delete) $roadindexes"
-        else output[${icount}]+=" $index is read-only (allow delete) -"
+      roerror=true
+    fi
+    if [[ $roadcount -gt 0 ]]; then
+      if [[ "$index" = "_all" ]]; then
+        if [[ $parser = "jq" ]]; then
+          roadindexes=$(echo $settings | jq -r '.[].settings.index |select(.blocks.read_only_allow_delete == "true").provided_name' | tr '\n' ' ')
         fi
-        roerror=true
+        output[${icount}]+=" $roadcount index(es) found read-only (allow delete) $roadindexes"
+      else output[${icount}]+=" $index is read-only (allow delete) -"
       fi
+      roerror=true
     fi
     let icount++
   done
@@ -601,37 +549,35 @@ jthreads) # Check JVM threads
 
 tps) # Check Thread Pool Statistics
   getstatus
-  if [[ -z $user ]]; then
+  if [[ -z $user ]] && [[ -z $cert ]]; then
     # Without authentication
     threadpools=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/thread_pool)
     threadpoolrc=$?
-    if [[ $threadpoolrc -eq 7 ]]; then
-      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-      exit $STATE_CRITICAL
-    elif [[ $threadpoolrc -eq 28 ]]; then
-      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-      exit $STATE_CRITICAL
-    fi
+  elif [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+	# Authentication with user credentials
+	authlogic
+	threadpools=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/thread_pool)
+    threadpoolrc=$?
+  elif [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+	# Authentication with certificate
+	authlogic_cert
+	threadpools=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} ${httpscheme}://${host}:${port}/_cat/thread_pool)
+    threadpoolrc=$?
   fi
 
-  if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
-    # Authentication required
-    authlogic
-    threadpools=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/thread_pool)
-    threadpoolrc=$?
-    if [[ $threadpoolrc -eq 7 ]]; then
-      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-      exit $STATE_CRITICAL
-    elif [[ $threadpoolrc -eq 28 ]]; then
-      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-      exit $STATE_CRITICAL
-    elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
-      echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
-      exit $STATE_CRITICAL
-    elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
-      echo "ES SYSTEM CRITICAL - User $user is unauthorized"
-      exit $STATE_CRITICAL
-    fi
+  # Sanity checks
+  if [[ $threadpoolrc -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $threadpoolrc -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
   fi
 
   if ! [[ $include = "_all"  ]]; then
@@ -714,37 +660,35 @@ tps) # Check Thread Pool Statistics
 
 master) # Check Cluster Master
   getstatus
-  if [[ -z $user ]]; then
+  if [[ -z $user ]] && [[ -z $cert ]]; then
     # Without authentication
     master=$(curl -k -s --max-time ${max_time} ${httpscheme}://${host}:${port}/_cat/master)
     masterrc=$?
-    if [[ $masterrc -eq 7 ]]; then
-      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-      exit $STATE_CRITICAL
-    elif [[ $masterrc -eq 28 ]]; then
-      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-      exit $STATE_CRITICAL
-    fi
+  elif [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+	# Authentication with user credentials
+	authlogic
+	master=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/master)
+    masterrc=$?
+  elif [[ -n $cert ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
+	# Authentication with certificate
+	authlogic_cert
+    master=$(curl -k -s --max-time ${max_time} -E ${cert} --key ${key} ${httpscheme}://${host}:${port}/_cat/master)
+    masterrc=$?
   fi
 
-  if [[ -n $user ]] || [[ -n $(echo $esstatus | grep -i authentication) ]] ; then
-    # Authentication required
-    authlogic
-    master=$(curl -k -s --max-time ${max_time} --basic -u ${user}:${pass} ${httpscheme}://${host}:${port}/_cat/master)
-    masterrc=$?
-    if [[ $threadpoolrc -eq 7 ]]; then
-      echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
-      exit $STATE_CRITICAL
-    elif [[ $threadpoolrc -eq 28 ]]; then
-      echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
-      exit $STATE_CRITICAL
-    elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
-      echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
-      exit $STATE_CRITICAL
-    elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
-      echo "ES SYSTEM CRITICAL - User $user is unauthorized"
-      exit $STATE_CRITICAL
-    fi
+  # Sanity checks
+  if [[ $threadpoolrc -eq 7 ]]; then
+    echo "ES SYSTEM CRITICAL - Failed to connect to ${host} port ${port}: Connection refused"
+    exit $STATE_CRITICAL
+  elif [[ $threadpoolrc -eq 28 ]]; then
+    echo "ES SYSTEM CRITICAL - server did not respond within ${max_time} seconds"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unable to authenticate") ]]; then
+    echo "ES SYSTEM CRITICAL - Unable to authenticate user $user for REST request"
+    exit $STATE_CRITICAL
+  elif [[ -n $(echo $esstatus | grep -i "unauthorized") ]]; then
+    echo "ES SYSTEM CRITICAL - User $user is unauthorized"
+    exit $STATE_CRITICAL
   fi
 
   masternode=$(echo "$master" | awk '{print $NF}')
