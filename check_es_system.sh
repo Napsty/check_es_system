@@ -260,9 +260,11 @@ fi
 # Retrieve information from Elasticsearch cluster
 getstatus() {
 if [[ ${local} ]]; then
-  esurl="${httpscheme}://${host}:${port}/_nodes/_local/stats"
+  filter_path='cluster_name,indices.store,indices.shards,indices.docs,nodes.*.count,nodes.*.jvm.mem,nodes.*.process,nodes.*.jvm.threads,status'
+  esurl="${httpscheme}://${host}:${port}/_nodes/_local/stats?filter_path=${filter_path}"
 else
-  esurl="${httpscheme}://${host}:${port}/_cluster/stats"
+  filter_path='cluster_name,indices.store,indices.shards,indices.docs,nodes.count,nodes.jvm.mem,nodes.process,nodes.jvm.threads,status'
+  esurl="${httpscheme}://${host}:${port}/_cluster/stats?filter_path=${filter_path}"
 fi
 eshealthurl="${httpscheme}://${host}:${port}/_cluster/health"
 
